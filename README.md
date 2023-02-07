@@ -89,6 +89,7 @@ The output plots should be examined after this step to ensure the cleaning and a
 
 Run
 > `$ jupyter [lab|notebook] second_profile_pca.ipynb`
+
 and follow the steps outlined. As with the previous step, most plots are also saved to the `<data_dir>/plots` directory. 
 
 
@@ -97,6 +98,7 @@ and follow the steps outlined. As with the previous step, most plots are also sa
 
 Run
 > `$ jupyter [lab|notebook] third_eigenvalue_gps.ipynb`
+
 and follow the steps outlined. As with the previous steps, most plots are also saved to the `<data_dir>/plots` directory. 
 
 
