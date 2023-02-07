@@ -1,5 +1,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*~
 
-test*
+test*.py
+*.log

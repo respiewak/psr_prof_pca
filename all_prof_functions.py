@@ -628,9 +628,11 @@ def read_pdv(filename, nbin=1024, logg=None):
         n_files = len(f_lines)/(nbin+2.) # 2 header lines per file
         if n_files % 1 != 0:
             if logg:
-                logg.info("Incorrect number of bins given, or input data have inconsistent numbers of bins")
+                logg.info("Incorrect number of bins given, or input data have inconsistent "\
+                          "numbers of bins")
             else:
-                print("Incorrect number of bins given, or input data have inconsistent numbers of bins")
+                print("Incorrect number of bins given, or input data have inconsistent "\
+                      "numbers of bins")
         else:
             output = np.empty((nbin, int(n_files)))
             mjd_out = np.empty(int(n_files))
@@ -646,9 +648,11 @@ def read_pdv(filename, nbin=1024, logg=None):
                         n_files = len(f_lines)/(nbin+2.)
                         if n_files % 1 != 0:
                             if logg:
-                                logg.info("Incorrect number of bins given, or input data have inconsistent numbers of bins")
+                                logg.info("Incorrect number of bins given, or input data have "\
+                                          "inconsistent numbers of bins")
                             else:
-                                print("Incorrect number of bins given, or input data have inconsistent numbers of bins")
+                                print("Incorrect number of bins given, or input data have "\
+                                      "inconsistent numbers of bins")
                         else:
                             output = np.empty((nbin, int(n_files)))
                             mjd_out = np.empty(int(n_files))
@@ -658,9 +662,11 @@ def read_pdv(filename, nbin=1024, logg=None):
                         
                 if output is None:
                     if logg:
-                        logg.error("Number of bins not identified for {} so no output array was made".format(filename))
+                        logg.error("Number of bins not identified for {} so no output array "\
+                                   "was made".format(filename))
                     else:
-                        print("ERROR: Number of bins not identified for {} so no output array was made".format(filename))
+                        print("ERROR: Number of bins not identified for {} so no output array "\
+                              "was made".format(filename))
                         
                     break
             else:
@@ -675,6 +681,54 @@ def read_pdv(filename, nbin=1024, logg=None):
                     tobs_out[j_file] = round(float(line_vals[3]), 0)
 
     return(output, mjd_out, tobs_out)
+
+
+def read_bad_mjd_file(filename):
+    """
+    Read the provided ascii file and return a dictionary containing MJDs for each
+    <pulsar_BE_freq> keyword
+
+    MJDs contained in the file are not required to be ordered or unique (including
+    for any given <pulsar_BE_freq> keyword)
+
+    """
+
+    n = 0
+    out_dict = {}
+    mjd_list = []
+    with open(filename, 'r') as f:
+        for line in f.readlines():
+            sline = line.strip()
+            if n == 0:
+                if sline[0] == '#':
+                    continue
+
+                if len(sline.split()) == 1:
+                    kwd = sline
+                else:
+                    raise(ValueError("Cannot interpret multi-word header as keyword"))
+                
+                n = 1
+            elif sline[0] == '#':
+                if len(np.unique(list(sline))) > 1:
+                    # skip lines starting with # but containing other characters
+                    continue
+                
+                # reached the end of the MJDs for that pulsar_BE_freq
+                out_dict[kwd] = mjd_list
+                mjd_list = []
+                n = 0
+            else:
+                try:
+                    mjd_list.append(float(sline))
+                except TypeError:
+                    raise(TypeError("Found a non-float: {}".format(sline)))
+
+    # ensure the last set is properly recorded
+    if len(mjd_list) > 0:
+        out_dict[kwd] = mjd_list
+        
+    return(out_dict)
 
 
 # find outliers by first modeling the distribution of eigenvalues (each component separately) as 3 gaussians (bimodal distribution plus)
