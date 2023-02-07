@@ -37,7 +37,7 @@ To start, run `jupyter lab testing_prof_analysis.ipynb` (or `jupyter notebook te
 * * *
 
 These scripts require the input profiles to be described by ascii files as output by PSRCHIVE's `pdv` tool. I recommend dividing your data according to pulsar, backend, and frequency band and preparing data files based on those combinations. The relevant `pdv` command is:
-    pdv -A <psr_files> >> <psr_be_freq.pdv>
+    ```pdv -A <psr_files> >> <psr_be_freq.pdv>```
 
 
 Note that your archives should first be scrunched in time, frequency, and polarisation.
@@ -46,7 +46,7 @@ Also note that the expected name convention is strict in this version of the cod
 
 
 If there is any doubt about the consistency of the number of phase bins in individual `*.pdv` files, a simple script to determine the most common number of phase bins and remove inconsistent observations is included. There is no harm in running this script in any case. Run this command in the directory containing your data: 
-    python check_nbins.py <pdv_files>
+    ```python check_nbins.py <pdv_files>```
 
 
 For every `psr_be_freq.pdv` file containing inconsistent bin counts, a new file will be produced with the name `psr_be_freq_new.pdv`; the input file is not altered. In the next part of the analysis, files with the `_new` tag will be prioritised.
@@ -56,7 +56,7 @@ For every `psr_be_freq.pdv` file containing inconsistent bin counts, a new file 
 * * *
 
 The first steps of the analysis are contained in `first_clean_align.py`, which can be run from the terminal as follows:
-    python first_clean_align.py -f 400 1400 -b AFB B0059+65
+    ```python first_clean_align.py -f 400 1400 -b AFB B0059+65```
 
 
 For that example, the code would look for two pdv files: `B0059+65_AFB_400.pdv` and `B0059+65_AFB_1400.pdv`.
