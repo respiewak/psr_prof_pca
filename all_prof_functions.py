@@ -1,3 +1,7 @@
+##  Author: Renee Spiewak
+
+
+
 import os, sys
 import numpy as np
 from matplotlib import pyplot as plt
@@ -13,8 +17,16 @@ import multiprocessing as mpr
 import gp_init_threads as th_init
 import cmasher as cmr
 import logging
-sys.path.append('/home/s86932rs/research/nulling2/')
-import null2_mcmc
+
+## fix these lines to use the nulling analysis functions
+if os.path.exists('../nulling2'):
+    sys.path.append('../nulling2/')
+    import null2_mcmc as nm
+else:
+    try:
+        import nulling_mcmc as nm
+    except ImportError:
+        print("Could not import nulling package; skipping all nulling steps")
 
 
 def _gauss(x, a, b, c):
@@ -1197,7 +1209,28 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
     return(a_aln_norm, a_temp_norm, a_mjds_new, a_tobs_new)
 
 
-def find_eq_width_snr(prof, nbin=512, verb=False):
+def find_eq_width_snr(prof, verb=False, plot_style='dark_background'):
+    """
+    Find the width of a given pulse profile using a tophat convolution
+    
+    Input:
+        prof - 1D array of floats, length of `nbin`, representing a single
+            profile
+        verb - bool, whether to verbosely print/plot diagnostic info
+        plot_style - str, a valid matplotlib 'style', e.g., 'default'
+        
+    Output:
+        float, the best width
+        float, the S/N derived from the convolution method
+    
+    """
+    
+    try:
+        plt.style.use(plot_style)
+    except OSError:
+        print("Couldn't load selected style; using the default instead")
+        plot_style = 'default'
+        
     if not (verb is True or verb is False):
         raise(TypeError("The type of `verb` is {}".format(type(verb))))
     
@@ -1207,12 +1240,11 @@ def find_eq_width_snr(prof, nbin=512, verb=False):
             
         return(1, 0)
     
+    nbin = len(prof)
     tophat = np.zeros(nbin)
-    #nbin /= 2
-    #nbin = int(nbin)
     lim_init, wid_guess = _find_off_pulse(prof)        
     if verb:
-        print("My best guess is", int(wid_guess))
+        print("My initial guess (overestimate) is", int(wid_guess))
         
     bin_cen = nbin/4
     width = int(0.5*nbin)-2
@@ -1237,29 +1269,27 @@ def find_eq_width_snr(prof, nbin=512, verb=False):
         
     max_val = np.array(max_val)
     wid_val = np.array(wid_val)
-    #thresh = 0.97*np.max(max_val)
-    
-    #knee = find_knee(wid_val, max_val, False)
-    #print("The knee is at", knee+0.5, "bins")
-    #y_knee = 0.5*(max_val[wid_val == knee][0] + max_val[wid_val > knee][-1])
     
     imax = np.argmax(max_val/np.sqrt(wid_val))
     best_wid = wid_val[imax]
         
     if verb:
-        with plt.style.context('default'):
+        if 'dark' in plot_style:
+            best_colour = 'w'
+        else:
+            best_colour = 'k'
+            
+        with plt.style.context(plot_style):
             plt.clf()
+            fig = plt.figure(num=1)
+            fig.set_size_inches(7, 5.5)
             plt.plot(wid_val, max_val/np.sqrt(wid_val))
             print("The number of trials was", len(wid_val))
             xlims = plt.xlim()
-            #print(xlims)
-            #plt.hlines(thresh, *xlims, color='grey', ls='--')
-            #plt.plot(knee+0.5, y_knee, 'k*')
-            plt.plot(best_wid, (max_val/np.sqrt(wid_val))[imax], 'k*')
+            plt.plot(best_wid, (max_val/np.sqrt(wid_val))[imax], '*', color=best_colour)
             plt.xlim(xlims)
             plt.xlabel('Trial width (bins)')
             plt.ylabel('Max. convolution value / sqrt(width)')
-            #plt.savefig('/home/s86932rs/research/testing_trial_widths.png', bbox_inches='tight')
             plt.show()
             
     rms_off = np.sqrt(np.mean(prof[lim_init]**2))
@@ -1288,7 +1318,9 @@ def find_knee(x, y, verb=True):
     return(x[:-1][delta_y/delta_x > rms][0])
 
 
-def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_change=False, null_time=22, on_time=6, testing=True):
+def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_change=False,
+                   null_time=22, on_time=6, verb=True, plot_style='dark_background',
+                   no_misalign=False):
     """
     Make a 2D array representing fake observations with some profile shape and nulling parameters
     
@@ -1296,13 +1328,16 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
         avg_shape - int or numpy.array of floats (with length `nbin`)
         nobs - int, the number of observations to simulate
         nbin - int, the number of phase bins for each observation
-        low_noise - boolean indicating whether the S/N of each observation is high
-        shape_change - boolean indicating whether to simulate pulse shape changes using one or two linear terms
-            Or: string from list ['qp', 'bi', 'bi_quick', 'random'] to specify `change_mode`
+        low_noise - bool, indicating whether the S/N of each observation is high
+        shape_change - bool or str, use `False` to skip shape variations; `True` to select from
+            ['qp', 'bi', 'bi_quick', 'random']; or specify a desired mode from the same list
         null_time - int or NoneType, indicating the mean number of consecutive observations per null
             Use `None` or `0` to indicate no nulling behaviour
         on_time - int, the mean number of consecutive observations where pulsar is on
             Ignore this parameter if no nulling behaviour
+        verb - bool, whether to print/plot diagnostic information
+        plot_style - str, a valid matplotlib 'style' (e.g., 'dark_background')
+        no_misalign - bool, whether to prevent a phase shift from being added
             
     Output:
         a 2D numpy.array of shape (nbin, nobs) representing the observations
@@ -1311,13 +1346,15 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
     
     """
     
-    # make fake MJD numbers
+    # make fake MJD values
     mjd_min = 47350 + np.random.randint(100)/np.random.randint(1, 100)
-    fake_mjds = np.array(sorted(mjd_min + np.random.randint(nobs*np.random.lognormal(sigma=0.8), size=nobs) + np.random.normal(size=nobs)))
+    fake_mjds = np.array(sorted(mjd_min + np.random.randint(nobs*np.random.lognormal(sigma=0.8), size=nobs)\
+                                + np.random.normal(size=nobs)))
     while np.max(fake_mjds)-mjd_min < nobs*2:
         fake_mjds += np.random.lognormal(np.log(5), 0.6, size=nobs)
         fake_mjds = np.array(sorted(fake_mjds))
         
+    # check the epoch separations to ensure a realistic distribution
     lags = fake_mjds[1:] - fake_mjds[:-1]
     if lags.min() < 1 or lags.max() > nobs/3:
         last_mjd = mjd_min
@@ -1338,82 +1375,117 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
         fake_mjds += lag_inc
         
     mjd_range = np.max(fake_mjds) - mjd_min
+    
+    # set the mean noise level (off-pulse rms)
     noise_rms = 0.05 if low_noise else 0.15
     
+    # if no "average" profile is given, generate one with the desired number of components
     if type(avg_shape) is int:
-        avg_prof, gs_cens, gs_wids, gs_hgts = make_fake_profile(avg_shape, noise_rms, nbin)
-    else:
+        avg_prof, comps_cens, comps_wids, comps_hgts = make_fake_profile(avg_shape, noise_rms, nbin)
+    else: # if a profile is given, find the rough parameters assuming it is a single Gaussian
         avg_prof = avg_shape
         # assume the template has only 1 component
-        gs_cens = np.array([np.argmax(avg_prof)])
-        _, width = _find_off_pulse(avg_prof)
-        gs_wids = np.array([width])/4
-        gs_hgts = np.array([np.max(avg_prof)])
+        comps_cens = np.array([np.argmax(avg_prof)])
+        width, _ = find_eq_width_snr(avg_prof)
+        comps_wids = np.array([width])/4
+        comps_hgts = np.array([np.max(avg_prof)])
         
+    # if profile variation is desired, determine the method and parameters
     if shape_change:
+        # generate up to 3 "eigenvectors"
         eigs = np.array([np.zeros(nbin), np.zeros(nbin), np.zeros(nbin)])
-        used_gs = []
-        for icomp in np.arange(np.random.randint(3)+1):
-            which_gs = np.random.randint(len(gs_cens))
-            used_gs.append(which_gs)
-            width = np.random.lognormal(np.log(gs_wids[which_gs]/4), gs_wids[which_gs]/10) + gs_wids[which_gs]/5
-            #print(gs_wids, width)
-            centre = gs_cens[which_gs] + int(np.random.normal(0, gs_wids[which_gs]/2))
-            eigs[icomp] = add_gauss(eigs[icomp], centre, width, height=0.4*gs_hgts[which_gs])
+        used_prof_comps = []
+        # run this loop 1-3 times for different eigenvectors
+        for icomp_eig in np.arange(np.random.randint(3)+1):
+            # randomly select one of the profile components to vary
+            which_prof_comp = np.random.randint(len(comps_cens))
+            used_prof_comps.append(which_prof_comp)
             
-        used_gs = np.array(used_gs)
+            # use the profile component parameters as a starting point
+            width = np.random.lognormal(np.log(comps_wids[which_prof_comp]/4),
+                                        comps_wids[which_prof_comp]/10)\
+                    + comps_wids[which_prof_comp]/5
+            centre = comps_cens[which_prof_comp]\
+                     + int(np.random.normal(0, comps_wids[which_prof_comp]/2))
+            eigs[icomp_eig] = add_gauss(eigs[icomp_eig], centre, width,
+                                        height=0.4*comps_hgts[which_prof_comp])
+            
+        used_prof_comps = np.array(used_prof_comps)
         
+        # figure out which mode, describing the variations over time, to use
+        mode_list = np.array(['qp', 'bi', 'bi_quick', 'random'])
         if shape_change is True:
-            change_mode = np.array(['qp', 'bi', 'bi_quick', 'random'])[np.random.randint(3)]
-        elif shape_change in ['qp', 'bi', 'bi_quick', 'random']:
+            change_mode = mode_list[np.random.randint(3)]
+        elif shape_change in mode_list:
             change_mode = shape_change
             
-        if change_mode == 'qp':
+        if change_mode == 'qp': # quasi-periodic; the best for testing the GP stuff
             tau = np.random.randint(mjd_range/30, mjd_range/10) # random timescale between one-thirtieth and one-tenth the timespan
-            amp = np.array([np.random.normal(0.8, 0.2) for A in range(len(used_gs))])
+            amp = np.array([np.random.normal(0.8, 0.2) for A in range(len(used_prof_comps))])
             offset = np.array([A/2 for A in amp])
             mode = None
-            def eig_val_func(mjd, tau, amp, offset, nobs, mode):
+            
+            # define the function that will return "eigenvalues" as a function of MJD
+            def eig_val_func(mjd, tau, amp, offset, nobs, mode=None):
+                # randomly alter the timescale for each "observation"
                 tau = np.random.normal(tau, 3*tau/nobs)
-                eig = amp*np.sin((mjd-47850)*2*np.pi/tau) + offset + np.random.normal(0, amp/5)
-                #mjd = np.random.normal(mjd, 0.5)
+                
+                # use a modified sinusoid with a constant offset (to prevent too much negative "emission")
+                eig = amp*np.sin((mjd-47850)*2*np.pi/tau)\
+                      + offset + np.random.normal(0, amp/5)
+                
                 return(eig, tau, None)
             
-        elif 'bi' in change_mode:
-            if 'quick' in change_mode:
+        elif 'bi' in change_mode: # bi-modal, shifting between two distinct states
+            if 'quick' in change_mode: # one state is dominant and the timescale is short
                 tau = int(np.random.lognormal(0.5)+2*np.mean(fake_mjds[1:] - fake_mjds[:-1]))
             else:
                 tau = np.random.randint(mjd_range/30, mjd_range/5) # random timescale between one-thirtieth and one-fifth the timespan
                 
-            amp = np.array([np.random.normal(1, 0.2) for A in range(len(used_gs))])
-            offset = np.array([None for A in range(len(used_gs))])
+            amp = np.array([np.random.normal(1, 0.2) for A in range(len(used_prof_comps))])
+            offset = np.array([None for A in range(len(used_prof_comps))])
             mode = 0
+
+            # define the function that will return "eigenvalues" as a function of MJD
             def eig_val_func(mjd, tau, amp, offset, nobs, mode):
+                # determine whether to change the state from the previous observation
                 switch_mode = 1 if np.random.randint(tau) == 0 else 0
                 if switch_mode == 1:
                     mode = 0 if mode == 1 else 1
                     
+                # the resulting eigenvalue will be a value close to 0 or 1
                 eig = np.random.normal(amp*mode, amp/10)
                 return(eig, tau, mode)
             
-        else:
+        else: # randomly change shape with the given eigenvectors
             tau = None
-            amp = np.array([None for A in range(len(used_gs))])
-            offset = np.array([0.4*gs_hgts[A] for A in used_gs])
+            amp = np.array([None for A in range(len(used_prof_comps))])
+            offset = np.array([0.4*comps_hgts[A] for A in used_prof_comps])
             mode = None
+
+            # define the function that will return "eigenvalues" as a function of MJD
             def eig_val_func(mjd, tau, amp, offset, nobs, mode):
                 eig = np.random.lognormal(sigma=0.7) - offset
                 return(eig, tau, None)
             
-        if testing:
+        if verb:
             print("The mode is {} with a timescale of {} days, amplitudes of {}, and offsets of {}".format(change_mode, tau, amp, offset))
-            with plt.style.context('dark_background'):
+            try:
+                plt.style.use(plot_style)
+            except OSError:
+                print("Cannot find given plot style; using default instead")
+                plot_style = 'default'
+                
+            with plt.style.context(plot_style):
                 plt.clf()
-                for icomp in range(len(used_gs)):
-                    plt.plot(eigs[icomp])
+                for icomp_eig in range(len(used_prof_comps)):
+                    plt.plot(eigs[icomp_eig])
+                    plt.xlabel('Phase bins')
+                    plt.ylabel('Eigenvectors')
                 
                 plt.show()
         
+    # set some initial parameters for the "observations"
     data = np.zeros((nbin, nobs))
     now_on = True
     first_on = fake_mjds[0]
@@ -1424,6 +1496,7 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
     mean_tobs = 900
     misalign = 0
     for iobs in np.arange(nobs):
+        # generate an "observation length" for each iteration
         if np.random.randint(10) >= 7:
             tobs = np.random.lognormal(np.log(mean_tobs*4), 0.3)
         else:
@@ -1431,16 +1504,22 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
             
         fake_tobs[iobs] = tobs
         
+        # vary the noise for each obs and reduce the value based on the `tobs`
         off_rms = noise_rms*0.75*(np.random.lognormal(sigma=1.3)+0.9)*np.sqrt(mean_tobs/tobs)
+        
+        # for the first "observation", do not add nulling or profile varation, just white noise
         if iobs == 0:
             data[:,iobs] = avg_prof + np.random.normal(scale=off_rms, size=nbin)
             continue
         
+        # this is the nulling section
         if null_time is not None and null_time > 0:
             # determine whether the pulsar is "on" based on timescales
             if last_on == fake_mjds[iobs-1]: # pulsar was on in last obs
                 this_time = last_on - first_on
-                check = np.random.normal(on_time, scale=on_time/3) # random number saying how long this on phase should last
+                
+                # random number saying how long this 'on' phase should last
+                check = np.random.normal(on_time, scale=on_time/3)
                 if this_time < check: # keep the pulsar "on"
                     now_on = True
                     last_on = fake_mjds[iobs]
@@ -1460,66 +1539,98 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
                     first_on = fake_mjds[iobs]
                     last_on = fake_mjds[iobs]
                     
-        misalign += int(np.floor(np.random.lognormal(sigma=nbin/600))) if iobs != 0 else 0
+        if not no_misalign:
+            # add a phase misalignment, increasing (or remaining constant) with each obs
+            misalign += int(np.floor(np.random.lognormal(sigma=nbin/600))) if iobs != 0 else 0
                     
         if now_on:
             data[:,iobs] = np.roll(avg_prof + np.random.normal(scale=off_rms, size=nbin), misalign)
+            
+            # add in the profile variation using the generated eigenvectors
             if shape_change:
-                for icomp in range(len(used_gs)):
+                for icomp in range(len(used_prof_comps)):
+                    # this is the function we defined per-mode above
                     eigval, tau, mode = eig_val_func(fake_mjds[iobs], tau, amp[icomp], offset[icomp], nobs, mode)
                     data[:,iobs] += np.roll(eigs[icomp]*eigval, misalign)
-                    #fake_mjds[iobs] = mjd
-        else:
-            data[:,iobs] = np.roll(np.random.normal(scale=off_rms, size=nbin), misalign)
+        else: # null, just make this one noise
+            data[:,iobs] = np.random.normal(scale=off_rms, size=nbin)
     
     return(data, fake_mjds, fake_tobs)
 
 
-def make_fake_profile(ncomp, noise_sigma, nbin=512, no_ip=True):
+def make_fake_profile(ncomp=2, noise_sigma=0.02, nbin=512, no_ip=None):
     """
-    Produce a fake profile with the given number of gaussian components
+    Produce a fake profile with the given number of Gaussian components
     If ncomp > 2, profile may (10% chance) have a main pulse and interpulse
     Can also guarantee presence (or absence) of an interpulse
+    
+    Input:
+        ncomp - int, the number of distinct Gaussian components to compose
+            the profile
+        noise_sigma - float, the ''scale'' of the normal distribution for
+            generating white noise on top of the components, relative to
+            a profile height of roughly 1
+        nbin - int, the number of phase bins for the profile
+        no_ip - bool or None, whether to prohibit or guarantee the presence
+            of an interpulse (True/False) or leave it to chance (None)
+            
+    Output:
+        a 1D numpy array of length `nbin` representing the profile
+        a 1D numpy array of length `ncomp` representing the component centres
+        a 1D numpy array of length `ncomp` representing the component widths
+        a 1D numpy array of length `ncomp` representing the component heights
     
     """
     
     prof = np.zeros(nbin)
+    # put the centre of the main component at roughly phase 0.25
     centre = nbin/4
     width = 0.01*nbin
     height = 1
+    
     cen_arr = np.zeros(ncomp)
     wid_arr = np.zeros(ncomp)
     hgt_arr = np.zeros(ncomp)
+    
+    # loop over the components to add random variations to the centre, width, and height
     for icomp in np.arange(ncomp)+1:
         centre += int(np.random.normal(scale=width*2))
         width *= np.random.lognormal(sigma=0.8)
         height = (1/icomp) + np.random.randint(5)/10
         if icomp > 2:
             randint = 0 if np.random.randint(10) > 0 else 1
-            if no_ip:
+            if no_ip is True:
                 randint = 0
+            elif no_ip is False and icomp == ncomp:
+                randint = 1
                 
             centre += int(randint*0.5*nbin)
             centre = centre % nbin
         
-        #print(centre, width, height)
+        # this function generates the Gaussian component and adds to the existing profile
         prof = add_gauss(prof, centre, width, height)
         cen_arr[icomp-1] = centre
         wid_arr[icomp-1] = width
         hgt_arr[icomp-1] = height
         
+    # add white noise to the profile
     prof += np.random.normal(scale=noise_sigma, size=nbin)
+    
+    # return the profile with the arrays of component parameters
     return(prof, cen_arr, wid_arr, hgt_arr)
 
 
 def add_gauss(prof, centre, width, height=1):
-    # f(x) = A*exp(-0.5*((x-centre)/width)**2)
-    new_comp = np.zeros(len(prof))
-    rand_bins = np.random.normal(centre, width, 100000) % len(prof)
-    for ibin in rand_bins:
-        new_comp[int(ibin)] += 0.1
+    """
+    Generate a single Gaussian component with given parameters
+    Simply apply the function:
+        f(x) = A*exp(-0.5*((x-centre)/width)**2)
+    to an array of x values
     
-    new_comp *= height/np.max(new_comp)
+    """
+       
+    bins = np.arange(len(prof))
+    new_comp = height*np.exp(-0.5 * ((bins - centre)/width)**2)
     
     return(prof+new_comp)
 
@@ -1593,7 +1704,24 @@ def bin_array(data, mjd_array, err_array, block=100, overlap=0.5):
     return(result, errors, ints_mean)
 
 
-def err_eigval(profs, eigfuns, off_lims, verb=True):
+def err_eigval(profs, eigfuns, off_lims, verb=False):
+    """
+    Find the uncertainties on eigenvalues based on the off-pulse rms
+    
+    Input:
+        profs - 2D array of floats, shape of (nbin, nobs), representing
+            profiles from which eigenvectors and -values are derived
+        eigfuns - 2D array of floats, shape of (ncomp, nbin), representing
+            eigenvectors
+        off_lims - 1D array of booleans, length of nbin, representing a
+            mask to select only off-pulse bins
+        verb - boolean, whether to print verbose testing information
+        
+    Output:
+        2D array of floats, shape of (nobs, ncomp), representing uncertainties
+    
+    """
+    
     nobs = profs.shape[1]
     ncomp = eigfuns.shape[0]
     errs_out = np.zeros((nobs, ncomp))
@@ -1616,6 +1744,18 @@ def err_eigval(profs, eigfuns, off_lims, verb=True):
 
 
 def err_eigval_off(profs, eigfuns):
+    """
+    Input:
+        profs - 2D array of floats, shape of (nbin, nobs), representing
+            profiles
+        eigfuns - 2D array of floats, shape of (ncomp, nbin), representing
+            eigenvectors
+            
+    Output:
+        2D array of floats, shape of (nobs, ncomp), representing uncertainties
+    
+    """
+    
     nbin = profs.shape[0]
     nobs = profs.shape[1]
     ncomp = eigfuns.shape[0]
@@ -1642,129 +1782,43 @@ def err_eigval_off(profs, eigfuns):
     return(errs_mean)
 
 
-def err_based_rms(profs, eigfuns, off_lims, eigenvals):
-    """
-    Calculate the uncertainty on an eigenvalue based on the off-pulse rms and summed intensity
-    Take into account scatter in eigenvalues?
+if 'nm' in globals():
+    # a better function using David's nulling_mcmc code
+    def check_null_prob(data, peak_bin=100, ip=False, on_min=None, onf_range=None, off_min=None):
+        """
+        Get a decent probability of an observation being a null using Bayesian statistics
+        Uses the intensity of the on-pulse region (near `peak_bin`) compared with that of the off-pulse region
+        The off-pulse region is assumed to be 1/2 of a rotation away from the `peak_bin` value if `ip` is False,
+            1/4 of a rotation if `ip` is True
     
-    """
-    
-    if profs.shape[0] != eigfuns.shape[1]: # different numbers of bins
-        raise(RuntimeError("Arrays have different lengths, cannot continue"))
-        
-    nobs = profs.shape[1]
-    ncomp = eigfuns.shape[0]
-    obss = np.arange(nobs)
-    try_errs = np.zeros((nobs, ncomp))
-    #nums = np.arange(profs.shape[0])
-    #lim = np.logical_or(nums < 40, nums > 160)
-    lim = off_lims
-    for icomp in range(ncomp):
-        for iobs in range(nobs):
-            prof_rms = np.sqrt(np.mean(profs[:,iobs][lim]**2))
-            vec_rms = np.sqrt(np.mean(eigfuns[icomp,lim]**2))
-            nearby_obs = np.logical_and(obss > iobs-4, obss < iobs+4)
-            vals_sctr = np.std(eigenvals[nearby_obs,icomp])*0.25
-            try_errs[iobs,icomp] = np.sqrt((20*prof_rms/np.abs(np.sum(profs[:,iobs])))**2 + (5*vec_rms/np.abs(np.sum(eigfuns[icomp,:])))**2 + vals_sctr**2)
+        Input:
+            data - a 2D array with shape (nbin, nobs) representing observed profiles (assume aligned)
+            peak_bin - an int representing the bin with the highest signal
+            ip - a boolean indicating whether there is an interpulse
+            on_min - an int (or NoneType) representing the bin starting the on-pulse region
+            onf_range - an int (or NoneType) representing the length of the on- and off-pulse regions
+            off_min - an int (or NoneType) representing the bin starting the off-pulse region
             
-    return(try_errs)
-
-
-def err_wtd_sum(prof, eigfun, eig_lims=None):
-    """
-    Calculate the uncertainty on a single eigenvalue as the standard error of the weighted mean
-    where the eigenfunction is used as the weights
+        Output:
+            a 1D array with length `nobs`, representing the probabilities
     
-    """
+        """
     
-    if len(prof) != len(eigfun) and (eig_lims is None or len(prof[eig_lims]) != len(eigfun)):
-        raise(RuntimeError("Arrays have different lengths; need mask defined"))
-    elif eig_lims is not None:
-        prof = prof[eig_lims]
-    
-    weights = eigfun
-    vals = prof
-    #n = len(weights)
-    #n_eff = np.sum(weights)**2/np.sum(weights**2)
-    
-    term1 = np.sum(weights*(vals**2))
-    term2 = np.sum(weights)
-    term3 = (np.sum(weights*vals)/np.sum(weights))**2
-    term4 = np.sum(weights**2)/(np.sum(weights)**2-np.sum(weights**2))
-    std_var = (term1/term2 - term3)*term4
-    std_err = np.sqrt(std_var) if std_var >= 0 else -np.sqrt(-std_var)
-    return(std_err)
-
-
-# High-S/N --> low prob. of being a null
-# High-rms --> low prob. of being a null
-def check_null_prob_old(data, peak_bin=100, ip=False):
-    """
-    Get a rough probability of an observation being a null based on off-pulse rms and pulse S/N
-    
-    Input:
-        data - a 2D array with shape (nbin, nobs) representing observed profiles (assume aligned)
-        peak_bin - an integer representing the bin with the highest signal
-        ip - a boolean indicating whether there is an interpulse
+        if on_min is None:
+            on_min = int(peak_bin - data.shape[0]/8)
+            onf_range = int(data.shape[0]/4)
+            if ip:
+                off_min = int(peak_bin + data.shape[0]/8)+1
+            else:
+                off_min = int(peak_bin + 3*data.shape[0]/8)
         
-    Output:
-        a 1D array with length `nobs` representing rough probabilities (NaNs may be present)
+        on_ints = np.sum(data[on_min:on_min+onf_range,:], axis=0)
+        off_ints = np.sum(data[off_min:off_min+onf_range,:], axis=0)
     
-    """
-    
-    if ip:
-        centre = 0.5
-        width = 0.4
-    else:
-        centre = 0.75
-        width = 0.8
-        
-    off_rms, _ = get_rms_bline(data, centre, width, test=False)
-    #data_norm = data/off_rms
-    snr_arr = calc_snr(data, int(peak_bin))
-    #print(off_rms, snr_arr)
-    prob = 1/(snr_arr*off_rms)
-    prob /= prob.max()*1.01 # normalise the "probabilities" (never reaches 1.0)
-    prob[np.where(prob < 0)[0]] = np.nan # get rid of bogus values
-    return(prob)
-
-
-# a better function using David's nulling_mcmc code
-def check_null_prob(data, peak_bin=100, ip=False, on_min=None, onf_range=None, off_min=None):
-    """
-    Get a decent probability of an observation being a null using Bayesian statistics
-    Uses the intensity of the on-pulse region (near `peak_bin`) compared with that of the off-pulse region
-    The off-pulse region is assumed to be 1/2 of a rotation away from the `peak_bin` value if `ip` is False,
-        1/4 of a rotation if `ip` is True
-    
-    Input:
-        data - a 2D array with shape (nbin, nobs) representing observed profiles (assume aligned)
-        peak_bin - an int representing the bin with the highest signal
-        ip - a boolean indicating whether there is an interpulse
-        on_min - an int (or NoneType) representing the bin starting the on-pulse region
-        onf_range - an int (or NoneType) representing the length of the on- and off-pulse regions
-        off_min - an int (or NoneType) representing the bin starting the off-pulse region
-        
-    Output:
-        a 1D array with length `nobs`, representing the probabilities
-    
-    """
-    
-    if on_min is None:
-        on_min = int(peak_bin - data.shape[0]/8)
-        onf_range = int(data.shape[0]/4)
-        if ip:
-            off_min = int(peak_bin + data.shape[0]/8)+1
-        else:
-            off_min = int(peak_bin + 3*data.shape[0]/8)
-        
-    on_ints = np.sum(data[on_min:on_min+onf_range,:], axis=0)
-    off_ints = np.sum(data[off_min:off_min+onf_range,:], axis=0)
-    
-    NP = null2_mcmc.NullingPulsar(on_ints, off_ints)
-    means_fit, _, stds_fit, _, weights_fit, _, _, _ = NP.fit_mcmc()
-    null_prob = NP.null_probabilities(means_fit, stds_fit, weights_fit, NP.on)
-    return(null_prob)
+        NP = nm.NullingPulsar(on_ints, off_ints)
+        means_fit, _, stds_fit, _, weights_fit, _, _, _ = NP.fit_mcmc()
+        null_prob = NP.null_probabilities(means_fit, stds_fit, weights_fit, NP.on)
+        return(null_prob)
 
 
 # function stolen and modified from Aris' psrshape/PulseShape.py

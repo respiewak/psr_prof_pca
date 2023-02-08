@@ -1,3 +1,7 @@
+##  Author: Renee Spiewak
+
+
+
 import george
 import numpy as np
 
