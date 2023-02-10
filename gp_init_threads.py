@@ -1,7 +1,6 @@
 ##  Author: Renee Spiewak
 
 
-
 import george
 import numpy as np
 
@@ -26,7 +25,7 @@ def lnprob(p):
     global gp
     global data
     # Trivial uniform prior
-    if p[-1] < np.log(4e2) or p[-1] > np.log(6e3):
+    if p[-1] < np.log(1.0e+02) or p[-1] > np.log(4.0e+06):
         return(-np.inf)
             
     if np.any((-100 > p[1:]) + (p[1:] > 100)):

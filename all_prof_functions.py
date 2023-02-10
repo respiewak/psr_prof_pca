@@ -14,7 +14,7 @@ import emcee
 import corner
 import scipy.optimize as op
 import multiprocessing as mpr
-import gp_init_threads as th_init
+#import gp_init_threads as th_init
 import cmasher as cmr
 import logging
 
@@ -455,7 +455,7 @@ def rem_extra_noisy(data, mjds, threshold=2):
             mask[num] += 1 if val else 0
             
     # mask now contains counts of which bins are included as 'off-pulse'
-    new_lim = mask > data.shape[1]*0.8 # bins marked as op in >80% of observations
+    new_lim = mask > data.shape[1]*0.6 # bins marked as off-pulse in >60% of observations
     # subtract baseline based on new 'off-pulse' region
     data -= np.mean(data[new_lim,:], axis=0)
     max_val = np.nan_to_num(np.max(data, axis=0))
@@ -477,6 +477,8 @@ def rem_extra_noisy(data, mjds, threshold=2):
 # new baseline/outlier removal function
 def rem_base_outs(data, mjds, tobs=None, threshold=1.5, wide=False, logg=None, cut_snr=False):
     """
+    The basic cleaning function
+    
     Input:
         data - a 2D array with shape (nbin, nobs) representing observed profiles
         mjds - a 1D array with length `nobs` representing the epochs of observations
@@ -514,8 +516,7 @@ def rem_base_outs(data, mjds, tobs=None, threshold=1.5, wide=False, logg=None, c
         #plt.hist(all_snr, bins=30)
         good_snr = all_snr > 1e-6
         snr_med = np.median(all_snr[good_snr])
-        lim2 = np.logical_and(np.logical_and(good_snr, all_snr > snr_med - all_snr[good_snr].std()*threshold),
-                              all_snr > 5)
+        lim2 = all_snr > max(snr_med - all_snr[good_snr].std()*threshold, 5)
         if len(all_snr[lim2]) < data.shape[1]*0.5:
             if logg:
                 logg.warning("Cutting by S/N will remove more than 50% of the observations")
@@ -534,9 +535,9 @@ def rem_base_outs(data, mjds, tobs=None, threshold=1.5, wide=False, logg=None, c
     wid_men = all_wid.mean()
     # beware of bimodal/wide distributions
     if wide:
-        wid_thrsh = 5
+        wid_thrsh = 3.5*threshold
     else:
-        wid_thrsh = 3
+        wid_thrsh = 2*threshold
         
     wid_std = all_wid.std()
     lim3 = np.logical_and(all_wid > wid_men - wid_thrsh*wid_std, all_wid < wid_men + wid_thrsh*wid_std)
@@ -557,9 +558,9 @@ def rem_base_outs(data, mjds, tobs=None, threshold=1.5, wide=False, logg=None, c
     in_inds = inds[lim_good]
     
     if logg:
-        logg.info('Number of noisy profiles removed (new function): {}'.format(len(out_inds)))
+        logg.info('Number of noisy profiles removed: {}'.format(len(out_inds)))
     else:
-        print('Number of noisy profiles removed (new function): {}'.format(len(out_inds)))
+        print('Number of noisy profiles removed: {}'.format(len(out_inds)))
     
     return(good_data, bad_data, good_mjds, rms_kept, out_inds, in_inds)
 
@@ -1109,19 +1110,21 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
     A pipeline-ish function to remove the baseline, remove bad profiles (including rms outliers and bad MJDs), align the peaks, and make a template.
     
     Input: 
-      data_arr : a 2D numpy array with shape (bins, profiles) representing the input data
-      mjds_arr : a 1D numpy array with shape (profiles,) representing MJDs
-      tobs_arr : a 1D numpy array with shape (profiles,) representing observation lengths in seconds
-      thrsh : a float representing the threshold for trimming outliers based on off-pulse rms
-      bad_mjds : a list (or numpy array) of floats representing MJDs to be removed
+      data_arr : a 2D numpy array of floats with shape (nbin, nprof) representing the input data
+      mjds_arr : a 1D numpy array of floats with shape (nprof,) representing MJDs
+      tobs_arr : a 1D numpy array of floats with shape (nprof,) representing observation lengths in seconds
+      thrsh : float, representing the threshold for trimming outliers based on off-pulse rms
+      bad_mjds : list (or numpy array) of floats, representing MJDs to be removed
+      wide : bool, whether to assume the distribution of pulse widths is broad (e.g., from shape variation)
       logg : a `logging` object (e.g., from `setup_log()`)
+      cut_snr : bool, whether to cut on S/N or leave possible nulls in the dataset
       
     Output:
       2D numpy array of data, properly aligned with baseline removed
-           shape is (bins, good_profiles) where good_profiles <= profiles - len(bad_mjds)
-      1D numpy array with shape (bins,) representing the profile template
-      1D numpy array with shape (good_profiles,) representing the remaining MJDs
-      1D numpy array with shape (good_profiles,) representing the remaining observation lengths in seconds
+           shape is (nbin, good_profs) where good_profs <= nprof - len(bad_mjds)
+      1D numpy array with shape (nbin,) representing the profile template
+      1D numpy array with shape (good_profs,) representing the remaining MJDs
+      1D numpy array with shape (good_profs,) representing the remaining observation lengths in seconds
     
     """
     
@@ -1130,8 +1133,6 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
     
     # use new function to remove baseline and bad profiles
     a_wo_bl, a_rp, a_mjds_new, a_rms, a_out, a_in = rem_base_outs(data_arr, mjds_arr, thrsh, wide=wide, logg=logg, cut_snr=cut_snr)
-    #a_mjds = mjds_arr
-    #_, _, _, _, _ = removebaseline(data_arr, thrsh, logg=logg)
     
     if a_wo_bl.shape[1] < 20:
         if logg is not None:
@@ -1140,15 +1141,7 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
             print("WARNING: Cuts have removed too many observations for the remaining to be useful")
             
         raise(RuntimeError("Not enough data"))
-    
-    ## a bit hacky but not too inefficient
-    #if len(a_out) > 0:
-    #    a_mjds_new = np.delete(a_mjds, a_out)
-    #    a_mjdremoved = np.delete(a_mjds, a_in)
-    #else:
-    #    a_mjds_new = a_mjds
-    #    a_mjdremoved = np.array([])
-        
+            
     if bad_mjds is not None and type(bad_mjds) is float:
         a_wo_bl = a_wo_bl[:,a_mjds_new != bad_mjds]
         a_mjds_new = a_mjds_new[a_mjds_new != bad_mjds]
@@ -1157,37 +1150,27 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
             a_wo_bl = a_wo_bl[:,a_mjds_new != bad_one]
             a_mjds_new = a_mjds_new[a_mjds_new != bad_one]
         
-    # use new function (and compare)
+    # find the brightest observation to use as a template for alignment
     a_brightest = find_bright(a_wo_bl)
-    #if a_brightest != findbrightestprofile(a_wo_bl, a_rms):
-    #    print("INFO: brightest profile found with new function differs")
-    
     a_aln, a_temp = aligndata(a_wo_bl, a_brightest)
+    
     # one final step of removing outliers
     a_aln_new, a_mjds_new = rem_extra_noisy(a_aln, a_mjds_new, threshold=thrsh)
     a_tobs_new = tobs_arr[np.array([M in a_mjds_new for M in mjds_arr])]
     
-    # re-align using a "smart" method to maximise stable bins(?)
+    # re-align using a new template
+    a_temp = np.mean(a_aln_new, axis=1)
     _, a_aln, lags = smart_align(a_temp, a_aln_new)
-    #print("The lags found by cross-correlating the observations are:", lags)
-    #max_vals = np.max(a_aln, axis=0)
-    #for i, val in enumerate(max_vals):
-    #    if val <= 0 or np.isnan(val):
-    #        max_vals[i] = 1e-6
             
     #a_norm = a_aln_new/np.max(a_aln_new, axis=0)
     a_original = np.copy(a_temp)
-    #width_temp, _ = find_eq_width_snr(a_original, len(a_original))
-    # switch this to the sum of points between points
+
+    # normalise by the sum of on-pulse bins
     lim_off, _ = _find_off_pulse(a_original)
     lim_on = np.logical_not(lim_off)
-    #a_temp_norm = a_original/(width_temp*np.max(a_original))
     a_temp_norm = a_original/np.sum(a_original[lim_on])
     
     a_aln_norm = np.zeros(a_aln.shape)
-    #for iobs, prof in enumerate(a_aln.T):
-        #width, _ = find_eq_width_snr(prof, len(prof))
-        #a_aln_norm[:,iobs] = prof/(width*max_vals[iobs])
         
     sum_val = np.sum(a_aln[lim_on,:], axis=0)
     sum_val = np.nan_to_num(sum_val)
@@ -1298,26 +1281,6 @@ def find_eq_width_snr(prof, verb=False, plot_style='dark_background'):
     return(best_wid, best_snr)
 
 
-def find_knee(x, y, verb=True):
-    # assume y is roughly monotonic and increasing
-    # find the point where the delta-y / delta-x approaches 0? the rms of the lowest values
-    delta_y = y[1:] - y[:-1]
-    delta_x = x[1:] - x[:-1]
-    slope = delta_y/delta_x
-    if verb:
-        plt.clf()
-        plt.plot(np.arange(len(slope)-1, -1, -1), slope)
-        plt.xlabel('index')
-        plt.ylabel('slope')
-        
-    lim = slope < slope.max()/3
-    rms = np.sqrt(np.mean(slope[slope < slope[lim].max()]**2))
-    if verb:
-        print('The rms is {:.3f}'.format(rms))
-        
-    return(x[:-1][delta_y/delta_x > rms][0])
-
-
 def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_change=False,
                    null_time=22, on_time=6, verb=True, plot_style='dark_background',
                    no_misalign=False):
@@ -1331,9 +1294,9 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
         low_noise - bool, indicating whether the S/N of each observation is high
         shape_change - bool or str, use `False` to skip shape variations; `True` to select from
             ['qp', 'bi', 'bi_quick', 'random']; or specify a desired mode from the same list
-        null_time - int or NoneType, indicating the mean number of consecutive observations per null
+        null_time - int or NoneType, indicating the mean number of days per null
             Use `None` or `0` to indicate no nulling behaviour
-        on_time - int, the mean number of consecutive observations where pulsar is on
+        on_time - int, the mean number of days where pulsar is on
             Ignore this parameter if no nulling behaviour
         verb - bool, whether to print/plot diagnostic information
         plot_style - str, a valid matplotlib 'style' (e.g., 'dark_background')
@@ -1347,16 +1310,18 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
     """
     
     # make fake MJD values
-    mjd_min = 47350 + np.random.randint(100)/np.random.randint(1, 100)
+    mjd_min = 49350 + np.random.randint(100)/np.random.randint(1, 100)
     fake_mjds = np.array(sorted(mjd_min + np.random.randint(nobs*np.random.lognormal(sigma=0.8), size=nobs)\
                                 + np.random.normal(size=nobs)))
+    
+    # require the MJD range to exceed twice the number of observations
     while np.max(fake_mjds)-mjd_min < nobs*2:
         fake_mjds += np.random.lognormal(np.log(5), 0.6, size=nobs)
         fake_mjds = np.array(sorted(fake_mjds))
         
     # check the epoch separations to ensure a realistic distribution
     lags = fake_mjds[1:] - fake_mjds[:-1]
-    if lags.min() < 1 or lags.max() > nobs/3:
+    if lags.min() < 0.9 or lags.max() > nobs/3:
         last_mjd = mjd_min
         lag_inc = np.zeros(len(fake_mjds))
         now_inc = 0
@@ -1365,7 +1330,7 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
                 continue
                 
             lag = lags[imjd-1]
-            if lag < 1:
+            if lag < 0.9:
                 now_inc += 2
             elif lag > nobs/20:
                 now_inc -= int(lag - nobs/25)
@@ -1374,14 +1339,15 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
             
         fake_mjds += lag_inc
         
+    fake_mjds = np.array(sorted(fake_mjds))
     mjd_range = np.max(fake_mjds) - mjd_min
     
     # set the mean noise level (off-pulse rms)
     noise_rms = 0.05 if low_noise else 0.15
     
-    # if no "average" profile is given, generate one with the desired number of components
+    # if no "average" profile is given, generate one with the desired number of components but no IP
     if type(avg_shape) is int:
-        avg_prof, comps_cens, comps_wids, comps_hgts = make_fake_profile(avg_shape, noise_rms, nbin)
+        avg_prof, comps_cens, comps_wids, comps_hgts = make_fake_profile(avg_shape, None, nbin, no_ip=True)
     else: # if a profile is given, find the rough parameters assuming it is a single Gaussian
         avg_prof = avg_shape
         # assume the template has only 1 component
@@ -1405,6 +1371,13 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
             width = np.random.lognormal(np.log(comps_wids[which_prof_comp]/4),
                                         comps_wids[which_prof_comp]/10)\
                     + comps_wids[which_prof_comp]/5
+            
+            # prevent the width from being too large which would create unreasonable profiles
+            while width > nbin/3:
+                width = np.random.lognormal(np.log(comps_wids[which_prof_comp]/4),
+                                            comps_wids[which_prof_comp]/10)\
+                        + comps_wids[which_prof_comp]/5
+                
             centre = comps_cens[which_prof_comp]\
                      + int(np.random.normal(0, comps_wids[which_prof_comp]/2))
             eigs[icomp_eig] = add_gauss(eigs[icomp_eig], centre, width,
@@ -1437,7 +1410,7 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
                 return(eig, tau, None)
             
         elif 'bi' in change_mode: # bi-modal, shifting between two distinct states
-            if 'quick' in change_mode: # one state is dominant and the timescale is short
+            if 'quick' in change_mode: # timescale is much shorter
                 tau = int(np.random.lognormal(0.5)+2*np.mean(fake_mjds[1:] - fake_mjds[:-1]))
             else:
                 tau = np.random.randint(mjd_range/30, mjd_range/5) # random timescale between one-thirtieth and one-fifth the timespan
@@ -1478,10 +1451,14 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
                 
             with plt.style.context(plot_style):
                 plt.clf()
+                fig = plt.figure(num=0)
+                fig.set_size_inches(7, 5.5)
+                fig.suptitle('Eigenvectors')
                 for icomp_eig in range(len(used_prof_comps)):
                     plt.plot(eigs[icomp_eig])
-                    plt.xlabel('Phase bins')
-                    plt.ylabel('Eigenvectors')
+                    
+                plt.xlabel('Phase bins')
+                plt.ylabel('Amplitude')
                 
                 plt.show()
         
@@ -1544,16 +1521,16 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
             misalign += int(np.floor(np.random.lognormal(sigma=nbin/600))) if iobs != 0 else 0
                     
         if now_on:
-            data[:,iobs] = np.roll(avg_prof + np.random.normal(scale=off_rms, size=nbin), misalign)
+            data[:,iobs] = np.roll(avg_prof + np.roll(np.random.normal(scale=off_rms, size=nbin), np.random.randint(nbin)), misalign)
             
             # add in the profile variation using the generated eigenvectors
             if shape_change:
                 for icomp in range(len(used_prof_comps)):
-                    # this is the function we defined per-mode above
+                    # this is the function we defined for each mode above
                     eigval, tau, mode = eig_val_func(fake_mjds[iobs], tau, amp[icomp], offset[icomp], nobs, mode)
                     data[:,iobs] += np.roll(eigs[icomp]*eigval, misalign)
         else: # null, just make this one noise
-            data[:,iobs] = np.random.normal(scale=off_rms, size=nbin)
+            data[:,iobs] = np.roll(np.random.normal(scale=off_rms, size=nbin), np.random.randint(nbin))
     
     return(data, fake_mjds, fake_tobs)
 
@@ -1569,7 +1546,8 @@ def make_fake_profile(ncomp=2, noise_sigma=0.02, nbin=512, no_ip=None):
             the profile
         noise_sigma - float, the ''scale'' of the normal distribution for
             generating white noise on top of the components, relative to
-            a profile height of roughly 1
+            a profile height of roughly 1;
+            `None` indicates a noiseless profile, just the Gaussian components
         nbin - int, the number of phase bins for the profile
         no_ip - bool or None, whether to prohibit or guarantee the presence
             of an interpulse (True/False) or leave it to chance (None)
@@ -1595,7 +1573,11 @@ def make_fake_profile(ncomp=2, noise_sigma=0.02, nbin=512, no_ip=None):
     # loop over the components to add random variations to the centre, width, and height
     for icomp in np.arange(ncomp)+1:
         centre += int(np.random.normal(scale=width*2))
+        
         width *= np.random.lognormal(sigma=0.8)
+        while width > nbin/3:
+            width = 0.01*nbin*np.random.lognormal(sigma=0.8)
+            
         height = (1/icomp) + np.random.randint(5)/10
         if icomp > 2:
             randint = 0 if np.random.randint(10) > 0 else 1
@@ -1614,7 +1596,8 @@ def make_fake_profile(ncomp=2, noise_sigma=0.02, nbin=512, no_ip=None):
         hgt_arr[icomp-1] = height
         
     # add white noise to the profile
-    prof += np.random.normal(scale=noise_sigma, size=nbin)
+    if noise_sigma is not None:
+        prof += np.random.normal(scale=noise_sigma, size=nbin)
     
     # return the profile with the arrays of component parameters
     return(prof, cen_arr, wid_arr, hgt_arr)
@@ -1822,7 +1805,8 @@ if 'nm' in globals():
 
 
 # function stolen and modified from Aris' psrshape/PulseShape.py
-def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_chain=False, mcmc=False, multi=False):
+def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_chain=False,
+           mcmc=False, multi=False, verb=False):
     """    
     Input:
         data - a 1D numpy array representing the measured data to be fit
@@ -1833,12 +1817,15 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
         prior_max - a float representing the maximum bound of the length scale (linear in days)
         mcmc - a boolean indicating whether to use MCMC
         multi - a boolean indicating whether to use multiprocessing
+        verb - bool, whether to be verbose with diagnostic information
 
     Output:
         a george.GP object with the best parameters after maximising the log likelihood
         a 2D array of samples from MCMC (None object if `mcmc` is False)
     
     """
+    
+    import gp_init_threads as th_init
     
     # Define functions for fitting using globals (gp and data)
     # Define the objective function (negative log-likelihood in this case)
@@ -1872,13 +1859,13 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
         gp.set_parameter_vector(p)
         return(-gp.grad_log_likelihood(data, quiet=True))
     
-    def do_sampling(gp, pool, func, use_errs=False, long_chain=False):
+    def do_sampling(gp, pool, func, use_errs=False, long_chain=False, verb=False):
         nwalkers, ndim = 36, len(gp) # why 36 walkers??
-        burn_chain = 200
-        prod_chain = 5000
+        burn_chain = 400
+        prod_chain = 20000
         if long_chain:
-            burn_chain *= 2
-            prod_chain *= 2
+            burn_chain *= 4
+            prod_chain *= 4
         
         if use_errs:
             burn_chain *= 2
@@ -1888,12 +1875,16 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
     
         # Initialize the walkers
         p0 = gp.get_parameter_vector() + 1e-1 * np.random.randn(nwalkers, ndim)
-        print("Running burn-in")
-        s = sampler.run_mcmc(p0, burn_chain)#, progress=True)
+        if verb:
+            print("Running burn-in")
+            
+        s = sampler.run_mcmc(p0, burn_chain, progress=verb)
         samp0 = s[0]
 
-        print("Running production chain")
-        sampler.run_mcmc(samp0, prod_chain, progress=True)
+        if verb:
+            print("Running production chain")
+            
+        sampler.run_mcmc(samp0, prod_chain, progress=verb)
         return(sampler, ndim)
         
     variance = np.var(data)
@@ -1913,13 +1904,15 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
         #print(gp.get_parameter_vector())
     else:
         gp.compute(mjds)
-        #print(gp.get_parameter_vector())
         #raise(RuntimeError("Break"))
+        
+    if verb:
+        print("The initial parameter vector is", gp.get_parameter_vector())
     
     if not mcmc: # no multiprocessing here...
         # Run the optimization routine
         p0 = gp.get_parameter_vector()
-        print("The initial parameter vector is:", p0)
+            
         results = op.minimize(neg_log_like, p0, jac=grad_neg_log_like, method="L-BFGS-B")
         # Update the kernel
         gp.set_parameter_vector(results.x)
@@ -1930,43 +1923,29 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
         if multi:
             proc_count = mpr.cpu_count() - 1
             with mpr.Pool(proc_count, initializer=th_init.init_thread, initargs=(kern_len, data, mjds, errs)) as pool:
-                sampler, ndim = do_sampling(gp, pool, th_init.lnprob, use_errs, long_chain)
+                sampler, ndim = do_sampling(gp, pool, th_init.lnprob, use_errs, long_chain, verb)
                 
         else:
             sampler, ndim = do_sampling(gp, None, logprob, use_errs, long_chain)
         
-        #nsamples = 50
-        ## WHAT IS THIS PART???
-        #allsamples  = np.zeros((nsamples, len(data)))
-        #for i in range(nsamples):
-        #    # Choose a random walker and step
-        #    w = np.random.randint(sampler.chain.shape[0])
-        #    n = np.random.randint(sampler.chain.shape[1])
-        #    gp.set_parameter_vector(sampler.chain[w, n])
-        #    allsamples[i,:] = gp.sample_conditional(data, mjds)
-        
-        #noiseless = np.mean(allsamples, axis=0)
-        #print(sampler.acceptance_fraction)
-        
         # find the burn-in time
         try:
             tau_a = sampler.get_autocorr_time(quiet=True)
-            print("The array of autocorrelation times is", tau_a)
+            if verb:
+                print("The array of autocorrelation times is", tau_a)
+                
             lim = np.array([np.isfinite(A) for A in tau_a])
             if not np.any(lim):
-                print("Invalid autocorrelation times; using default of 50")
-                tau = 50
+                print("Invalid autocorrelation times; using default of 200")
+                tau = 200
             else:
                 tau = np.mean(tau_a[lim])
+                
         except emcee.autocorr.AutocorrError as e:
             print(str(e))
             return(None, None)
         
-        if np.isnan(tau):
-            print("Invalid autocorrelation time; using default of 50")
-            tau = 50
-            
-        flat_samples = sampler.get_chain(discard=max(200, int(np.ceil(tau*2.5))), thin=int(np.floor(tau/2)), flat=True)
+        flat_samples = sampler.get_chain(discard=max(400, int(np.ceil(tau*2.5))), thin=int(np.floor(tau/2)), flat=True)
         # get the median values for each parameter
         p_final = np.zeros(ndim)
         for i in range(ndim):
@@ -1979,10 +1958,41 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
 
 
 def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200, prior_max=2000,
-                long=False, plot=True, mcmc=True, multi=True, plot_chains=False, plot_corner=False, gp_plotname=None):
+                long=False, plot_gps=True, mcmc=True, multi=True, plot_chains=False, plot_corner=False,
+                gp_plotname=None, bk_bgd=False, verb=True):
+    """
+    Input:
+        data - 2D array of floats, shape of (nobs, ncomp)
+        mjds_in - 1D array of floats, length of nobs
+        errs - 2D array of floats, shape of (nobs, ncomp)
+        kern_len - float
+        max_num - int
+        prior_min - float
+        prior_max - float
+        long - bool
+        plot_gps - bool
+        mcmc - bool
+        multi - bool
+        plot_chains - bool
+        plot_corner - bool
+        gp_plotname - str or NoneType, file name to use for the plot of resulting GPs
+        bk_bgd - bool, whether to use a dark background for the plots
+        verb - bool, whether to be verbose with diagnose information
+        
+    Output:
+        2D array of floats, shape of (max_num+1, nobs) or (ncomp, nobs) if max_num is `None`
+        2D array of floats, same shape as previous variable
+        1D array of floats, length of nobs
+    
+    """
+    
+    write_gp_init_threads(prior_min, prior_max)
+    
     # subtract the min. of the `mjds`
     mjds_off = int(np.floor(mjds_in.min()))
-    print("Subtracting {} from MJDs (will return true MJD values)".format(mjds_off))
+    if verb:
+        print("Subtracting {} from MJDs (will return true MJD values)".format(mjds_off))
+        
     mjds = mjds_in - mjds_off
     mjds_pred = np.arange(np.ceil(mjds.max()+1))
     # initialise arrays
@@ -2000,32 +2010,42 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
             val_errs = errs[:,num]
             
         # the heavy lifting
-        gp, flat_samps = get_gp(eigval, mjds, kern_len, val_errs, prior_min, prior_max, long_chain=long, mcmc=mcmc, multi=multi)
+        gp, flat_samps = get_gp(eigval, mjds, kern_len, val_errs, prior_min, prior_max,
+                                long_chain=long, mcmc=mcmc, multi=multi, verb=verb)
         
-        # helpful plots
+        if plot_gps or plot_chains or plot_corner:
+            if bk_bgd:
+                plot_style = 'dark_background'
+                best_colour = cmr.chroma(0.85)
+            else:
+                plot_style = 'default'
+                best_colour = 'k'
+        
+        # helpful diagnostic plots
         if plot_chains and flat_samps is not None:
-            with plt.style.context('default'):
+            with plt.style.context(plot_style):
                 plt.clf()
                 fig = plt.figure(num=num+1)
+                fig.set_size_inches(10, 4)
                 ax = fig.gca()
-                ax.plot(flat_samps[:,-1], 'k-')
+                ax.plot(flat_samps[:,-1], '-', color=best_colour)
                 ax.set_xlabel('steps')
                 ax.set_ylabel('log(length_scale)')
                 xlims = ax.get_xlim()
                 ylims = ax.get_ylim()
-                ax.hlines([prior_min, prior_max], xlims[0], xlims[1], linestyles='dashed')
+                ax.hlines([np.log(prior_min), np.log(prior_max)], xlims[0], xlims[1], linestyles='dashed')
                 ax.set_xlim(xlims)
                 ax.set_ylim(ylims)
                 plt.show()
             
         if plot_corner and flat_samps is not None:
-            with plt.style.context('default'):
+            with plt.style.context(plot_style):
                 plt.clf()
                 gp_names = gp.get_parameter_names()
                 #gp_bounds = gp.get_parameter_bounds()
                 gp_bounds = [1 for A in gp_names]
                 gp_bounds[-1] = (np.log(prior_min), np.log(prior_max))
-                corner.corner(flat_samps, labels=gp_names, range=gp_bounds)
+                corner.corner(flat_samps, labels=gp_names, range=gp_bounds, color=best_colour)
                 plt.show()
         
         pred, pred_var = gp.predict(eigval, mjds_pred, return_var=True)
@@ -2037,22 +2057,46 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
             break
             
     # plot the results
-    if plot:
+    if plot_gps:
         if max_num is None:
             max_num = data.shape[1]
             
-        plot_eig_gp(data[:,:max_num+1], mjds, errs, pred_res[:max_num+1,:], pred_vars[:max_num+1,:], mjds_pred, mjds_off, savename=gp_plotname)
+        plot_eig_gp(data[:,:max_num+1], mjds, errs, pred_res[:max_num+1,:], pred_vars[:max_num+1,:],
+                    mjds_pred, mjds_off, savename=gp_plotname, bk_bgd=bk_bgd)
         
     return(pred_res, pred_vars, mjds_pred+mjds_off)
 
 
-def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset=None, savename=None, bk_bgd=False):
+def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset=None,
+                savename=None, bk_bgd=False):
+    """
+    Make a set of panels (numbering `ncomp_short`) of eigenvalues per component and fitted GPs
+    Each panel contains the actual eigenvalues (with uncertainties) for each observation and
+    the median GP with an error region
+    
+    Input:
+       data - 2D array of floats, shape of (nobs, ncomp), representing the real eigenvalues
+       mjds - 1D array of floats, length of nobs, representing the real observation MJDs
+       data_errs - 2D array of floats, shape of (nobs, ncomp), representing the uncertainties
+           on the real eigenvalues
+       pred_res - 2D array of floats, shape of (ncomp_short, nobs_long), representing the median
+           GPs per eigenvector analysed (ncomp_short <= ncomp)
+       pred_var - 2D array of floats, shape of (ncomp_short, nobs_long), representing the
+           uncertainties on the GPs per eigenvector analysed
+       mjds_pred - 1D array of floats, length of nobs_long, representing a uniform set of
+           MJDs spanning the same range as `mjds` (nobs_long >= nobs)
+       mjd_offset - float or NoneType, the zero-point that was subtracted from the real MJDs
+       savename - str or NoneType, the file name for saving the plot (or `None` to not save it)
+       bk_bgd - bool, whether to use a dark background for the plot
+    
+    """
+    
     if bk_bgd:
         #plt.style.use('dark_background')
         style = 'dark_background'
         cmap = cmr.chroma_r
         lc = 'w'
-        k_alpha = 0.8
+        k_alpha = 0.4
     else:
         #plt.style.use('default')
         style = 'default'
@@ -2065,11 +2109,7 @@ def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset
     else:
         xlab = "MJD (day)"
         
-    #c1 = cmap(0.0)
-    #c2 = cmap(0.3)
     c3 = cmap(0.53)
-    #c4 = cmap(0.65)
-    #c5 = cmap(0.9)
     
     with plt.style.context(style):
         fig = plt.figure(num=1)
@@ -2110,7 +2150,7 @@ def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset
                 axes_list[num] = ax
                 ax.fill_between(mjds_pred, preds - np.sqrt(predv), preds + np.sqrt(predv),
                                  color='k', alpha=k_alpha, zorder=10)
-                ax.plot(mjds_pred, preds, lc, lw=1.5)
+                ax.plot(mjds_pred, preds, lc, lw=1.5, zorder=20)
                 if data_errs is not None:
                     ax.errorbar(mjds, eigv, yerr=eiger, fmt='k.', mfc=c3, mec=c3, ecolor=c3, ms=8, zorder=1)
                 else:
@@ -2137,37 +2177,37 @@ def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset
 def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_real=None, sub_mean=True, bk_bgd=False, savename=None):
     """
     A function to reconstruct profiles from eigenvectors and predicted eigenvalues and make a waterfall-type plot
-    
+
+    Note that the first dimensions of `eigvecs` and `pred_reses` need not be equal,
+    as long as `nvec_1` >= `nvec` and the first `nvec` elements are matched between the arrays
+
     Input:
         mean_prof - 1D array representing the mean profile (length of nbin)
         eigvecs - 2D array of eigenvectors with shape (nvec_1, nbin)
         mjds_pred - 1D array of MJDs
         pred_reses - 2D array of predicted eigenvalues with shape (nvec, len(mjds_pred))
-        psrname
+        psrname - str, the name of the source being plotted
         mjds_real - a 1D array representing the real MJDs of observations used to produce model
-        sub_mean
-        bk_bgd
-        savename
-        
-        Note that the first dimensions of `eigvecs` and `pred_reses` need not be equal, as long as `nvec_1` >= `nvec` and the first `nvec` elements are matched between the arrays
+        sub_mean - bool, whether to subtract the mean profile from the total, 
+            i.e., to just plot the summed eigenvectors
+        bk_bgd - bool, whether to use a dark background for the plot
+        savename - str or NoneType, name of the file to save the plot
+            Use `None` to not save the plot to disk (just show the plot)
     
     """
     
     if bk_bgd:
-        #plt.style.use('dark_background')
         style = 'dark_background'
         cmap = cmr.chroma_r
-        if sub_mean:
-            cmap = cmr.iceburn
         lc = 'w'
     else:
-        #plt.style.use('default')
         style = 'default'
         cmap = cmr.chroma
-        if sub_mean:
-            cmap = cmr.iceburn
         lc = 'k'
 
+    if sub_mean:
+        cmap = cmr.iceburn
+            
     with plt.style.context(style):
         plt.clf()
         fig = plt.figure(num=1)
@@ -2224,3 +2264,47 @@ def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_re
 
 
 
+def write_gp_init_threads(prior_min, prior_max):
+    std_text = """##  Author: Renee Spiewak
+
+
+import george
+import numpy as np
+
+
+def init_thread(kern_len, _data, mjds, errs=None):
+    global gp
+    global data
+    data = _data
+    variance = np.var(data)
+    kernel = variance * george.kernels.Matern52Kernel(kern_len)
+    gp = george.GP(kernel, np.mean(data), fit_mean=True, solver=george.HODLRSolver,
+                   white_noise=np.log(np.sqrt(variance)*0.8), fit_white_noise=True)
+    if errs is not None:
+        gp.compute(mjds, errs)
+    else:
+        gp.compute(mjds)
+        
+    return()
+
+
+def lnprob(p):
+    global gp
+    global data
+    # Trivial uniform prior
+    if p[-1] < np.log({:.1e}) or p[-1] > np.log({:.1e}):
+        return(-np.inf)
+            
+    if np.any((-100 > p[1:]) + (p[1:] > 100)):
+        return(-np.inf)
+        
+    # Update the kernel and compute the lnlikelihood
+    gp.set_parameter_vector(p)
+    return(gp.lnlikelihood(data, quiet=True))
+    
+"""
+    
+    with open('gp_init_threads.py', 'w') as f:
+        f.write(std_text.format(prior_min, prior_max))
+        
+    
