@@ -475,7 +475,7 @@ def rem_extra_noisy(data, mjds, threshold=2):
 
 
 # new baseline/outlier removal function
-def rem_base_outs(data, mjds, tobs=None, threshold=1.5, wide=False, logg=None, cut_snr=False):
+def rem_base_outs(data, mjds, tobs=None, threshold=1.5, wide=False, logg=None, cut_snr=False, quiet=False):
     """
     The basic cleaning function
     
@@ -486,6 +486,7 @@ def rem_base_outs(data, mjds, tobs=None, threshold=1.5, wide=False, logg=None, c
         wide - a boolean indicating if the distribution of widths is assumed to be broad
         logg - a `logging` object
         cut_snr - a boolean flag indicating whether to cut based on S/N with a strict threshold
+        quiet - a boolean indicating whether to not print info (still print warnings and errors)
         
     Output:
         a 2D array with shape (nbin, nobs_new) representing good profiles with baselines removed
@@ -559,7 +560,7 @@ def rem_base_outs(data, mjds, tobs=None, threshold=1.5, wide=False, logg=None, c
     
     if logg:
         logg.info('Number of noisy profiles removed: {}'.format(len(out_inds)))
-    else:
+    elif not quiet:
         print('Number of noisy profiles removed: {}'.format(len(out_inds)))
     
     return(good_data, bad_data, good_mjds, rms_kept, out_inds, in_inds)
@@ -1105,7 +1106,7 @@ def setup_log(filename):
     return(logger)
 
 
-def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=False, logg=None, cut_snr=False):
+def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=False, logg=None, cut_snr=False, quiet=False):
     """
     A pipeline-ish function to remove the baseline, remove bad profiles (including rms outliers and bad MJDs), align the peaks, and make a template.
     
@@ -1118,6 +1119,7 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
       wide : bool, whether to assume the distribution of pulse widths is broad (e.g., from shape variation)
       logg : a `logging` object (e.g., from `setup_log()`)
       cut_snr : bool, whether to cut on S/N or leave possible nulls in the dataset
+      quiet : bool, whether to not print anything beyond warnings and errors
       
     Output:
       2D numpy array of data, properly aligned with baseline removed
@@ -1132,7 +1134,8 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
     nobs_in = data_arr.shape[1]
     
     # use new function to remove baseline and bad profiles
-    a_wo_bl, a_rp, a_mjds_new, a_rms, a_out, a_in = rem_base_outs(data_arr, mjds_arr, thrsh, wide=wide, logg=logg, cut_snr=cut_snr)
+    a_wo_bl, a_rp, a_mjds_new, a_rms, a_out, a_in = rem_base_outs(
+        data_arr, mjds_arr, thrsh, wide=wide, logg=logg, cut_snr=cut_snr, quiet=quiet)
     
     if a_wo_bl.shape[1] < 20:
         if logg is not None:
@@ -1186,7 +1189,7 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
     
     if logg:
         logg.info("In total, removed {} observations, aligned remaining obs., and normalised according to peak height".format(nobs_in - a_aln_norm.shape[1]))
-    else:
+    elif not quiet:
         print("In total, removed {} observations, aligned remaining obs., and normalised according to peak height".format(nobs_in - a_aln_norm.shape[1]))
     
     return(a_aln_norm, a_temp_norm, a_mjds_new, a_tobs_new)
@@ -1283,7 +1286,7 @@ def find_eq_width_snr(prof, verb=False, plot_style='dark_background'):
 
 def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_change=False,
                    null_time=22, on_time=6, verb=True, plot_style='dark_background',
-                   no_misalign=False):
+                   no_misalign=False, strong=False, save_plot=None, show_plot=False):
     """
     Make a 2D array representing fake observations with some profile shape and nulling parameters
     
@@ -1301,6 +1304,9 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
         verb - bool, whether to print/plot diagnostic information
         plot_style - str, a valid matplotlib 'style' (e.g., 'dark_background')
         no_misalign - bool, whether to prevent a phase shift from being added
+        strong - bool, whether the shape variations should be painfully obvious
+        save_plot - str or NoneType
+        show_plot - bool
             
     Output:
         a 2D numpy.array of shape (nbin, nobs) representing the observations
@@ -1343,7 +1349,7 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
     mjd_range = np.max(fake_mjds) - mjd_min
     
     # set the mean noise level (off-pulse rms)
-    noise_rms = 0.05 if low_noise else 0.15
+    noise_rms = 0.02 if low_noise else 0.15
     
     # if no "average" profile is given, generate one with the desired number of components but no IP
     if type(avg_shape) is int:
@@ -1358,11 +1364,20 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
         
     # if profile variation is desired, determine the method and parameters
     if shape_change:
+        if strong:
+            neigs = 4
+            min_eigs = 2
+            eig_height = 0.8
+        else:
+            neigs = 3
+            min_eigs = 1
+            eig_height = 0.4
+            
         # generate up to 3 "eigenvectors"
-        eigs = np.array([np.zeros(nbin), np.zeros(nbin), np.zeros(nbin)])
+        eigs = np.array([np.zeros(nbin) for A in range(neigs+min_eigs)])
         used_prof_comps = []
-        # run this loop 1-3 times for different eigenvectors
-        for icomp_eig in np.arange(np.random.randint(3)+1):
+        # run this loop min_eigs to neigs+min_eigs times for different eigenvectors
+        for icomp_eig in np.arange(np.random.randint(neigs)+min_eigs):
             # randomly select one of the profile components to vary
             which_prof_comp = np.random.randint(len(comps_cens))
             used_prof_comps.append(which_prof_comp)
@@ -1381,7 +1396,7 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
             centre = comps_cens[which_prof_comp]\
                      + int(np.random.normal(0, comps_wids[which_prof_comp]/2))
             eigs[icomp_eig] = add_gauss(eigs[icomp_eig], centre, width,
-                                        height=0.4*comps_hgts[which_prof_comp])
+                                        height=eig_height*comps_hgts[which_prof_comp])
             
         used_prof_comps = np.array(used_prof_comps)
         
@@ -1460,8 +1475,12 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
                 plt.xlabel('Phase bins')
                 plt.ylabel('Amplitude')
                 
-                plt.show()
+                if save_plot:
+                    plt.savefig(save_plot, bbox_inches='tight')
         
+                if show_plot:
+                    plt.show()
+                    
     # set some initial parameters for the "observations"
     data = np.zeros((nbin, nobs))
     now_on = True
@@ -1959,7 +1978,7 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
 
 def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200, prior_max=2000,
                 long=False, plot_gps=True, mcmc=True, multi=True, plot_chains=False, plot_corner=False,
-                gp_plotname=None, bk_bgd=False, verb=True):
+                gp_plotname=None, bk_bgd=False, verb=True, plot_dir=None, show_plots=True):
     """
     Input:
         data - 2D array of floats, shape of (nobs, ncomp)
@@ -1978,6 +1997,8 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
         gp_plotname - str or NoneType, file name to use for the plot of resulting GPs
         bk_bgd - bool, whether to use a dark background for the plots
         verb - bool, whether to be verbose with diagnose information
+        plot_dir - str or NoneType
+        show_plots - bool
         
     Output:
         2D array of floats, shape of (max_num+1, nobs) or (ncomp, nobs) if max_num is `None`
@@ -2036,8 +2057,12 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
                 ax.hlines([np.log(prior_min), np.log(prior_max)], xlims[0], xlims[1], linestyles='dashed')
                 ax.set_xlim(xlims)
                 ax.set_ylim(ylims)
-                plt.show()
+                if plot_dir is not None:
+                    plt.savefig(os.path.join(plot_dir, 'gp_chain_{}.png'.format(num)), bbox_inches='tight')
             
+                if show_plots:
+                    plt.show()
+                    
         if plot_corner and flat_samps is not None:
             with plt.style.context(plot_style):
                 plt.clf()
@@ -2046,8 +2071,12 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
                 gp_bounds = [1 for A in gp_names]
                 gp_bounds[-1] = (np.log(prior_min), np.log(prior_max))
                 corner.corner(flat_samps, labels=gp_names, range=gp_bounds, color=best_colour)
-                plt.show()
+                if plot_dir is not None:
+                    plt.savefig(os.path.join(plot_dir, 'gp_corner_{}.png'.format(num)), bbox_inches='tight')
         
+                if show_plots:
+                    plt.show()
+                    
         pred, pred_var = gp.predict(eigval, mjds_pred, return_var=True)
         pred_res[num,:] = pred
         pred_vars[num,:] = pred_var
@@ -2062,13 +2091,13 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
             max_num = data.shape[1]
             
         plot_eig_gp(data[:,:max_num+1], mjds, errs, pred_res[:max_num+1,:], pred_vars[:max_num+1,:],
-                    mjds_pred, mjds_off, savename=gp_plotname, bk_bgd=bk_bgd)
+                    mjds_pred, mjds_off, savename=gp_plotname, bk_bgd=bk_bgd, show=show_plots)
         
     return(pred_res, pred_vars, mjds_pred+mjds_off)
 
 
 def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset=None,
-                savename=None, bk_bgd=False):
+                savename=None, bk_bgd=False, show=False):
     """
     Make a set of panels (numbering `ncomp_short`) of eigenvalues per component and fitted GPs
     Each panel contains the actual eigenvalues (with uncertainties) for each observation and
@@ -2171,7 +2200,8 @@ def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset
         if savename is not None:
             plt.savefig(savename, bbox_inches='tight')
         
-        plt.show()
+        if show:
+            plt.show()
 
 
 def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_real=None, sub_mean=True, bk_bgd=False, savename=None):

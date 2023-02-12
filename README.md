@@ -27,7 +27,7 @@ I also recommend installing the `jupyter` package in order to utilise the notebo
 
 In addition to the scripts and notebooks outlining the main parts of the analysis, a notebook for the creation of test ''profiles'' and subsequent analysis is included. This is a good place to start, to test your setup and to understand the analysis steps. No real data are required to run this notebook. 
 
-To start, run `jupyter lab testing_prof_analysis.ipynb` (or `jupyter notebook testing_prof_analysis.ipynb`) and follow the steps therein. 
+To start, run `jupyter lab testing_prof_analysis.ipynb` (or `jupyter notebook testing_prof_analysis.ipynb`) and follow the steps therein. Alternatively, if you are familiar with the analysis and merely need to test the functions, run `python testing_prof_analysis.py` using the optional `-b` and `-d <path>` flags to use a dark background for plots and to set the output directory (default is `./test_plots`). 
 
 
 ## Running your analysis
@@ -59,6 +59,16 @@ The first steps of the analysis are contained in `first_clean_align.py`, which c
 > `$ python first_clean_align.py -f 400 1400 -b AFB B0059+65`
 
 
+The arguments for this script are:
+* Mandatory argument: Any number of pulsar names as they appear in the pdv file names (this is a greedy argument, so put it/them first before any flags or last after a non-argument flag or single-argument flag like `-l`)
+* Frequency/ies: `-f|--frq_list`, Frequency band(s) as they appear in the pdv file names (integers); this argument is greedy
+* Backend(s): `-b|--be_list`, Backend names/abbreviations as they appear in the pdv file names; this argument is greedy
+* Nulling analysis: `-s|--do_snrs`, A switch to determine whether to analyse S/N values and determine probability of nulling; requires David Kaplan's nulling-pulsars code (WIP)
+* Data directory: `-d|--data_dir`, Absolute or relative path to the directory containing profile data
+* Bad data to remove:`-m|--bad_mjd_file`, Absolute or relative path to an ascii file listing MJDs of observations to exclude based on pulsar name, backend, and frequency band
+* Log file: `-l|--log_name`, Path to the log file, or short name to use; the default value is 'prof_analysis' in the data directory
+
+
 For that example, the code would look for two pdv files: `B0059+65_AFB_400.pdv` and `B0059+65_AFB_1400.pdv`.
 
 
@@ -71,7 +81,7 @@ As the input data are expected to be time-, frequency-, and polarisation-scrunch
 This analysis does not assume perfect alignment of the input profiles, but the simple autocorrelation method used does not perform well with multi-peak profiles, so care should be taken in these cases.
 
 
-While proceeding, this script will output plots into a directory called `plots` in the given data directory (the `plots` directory will be created if it does not exist). The plots produced include:
+While proceeding, this script will output plots into a directory inside your data directory called `plots` in the given data directory (the `plots` directory will be created if it does not exist). The plots produced include:
 * A ''Joy Division'' style waterfall plot of raw profiles
 * A ''Joy Division'' plot of profiles after all cleaning and alignment
 
