@@ -4,6 +4,5 @@ __pycache__/
 *~
 .ipynb_*
 
-test*.py
 *.log
 test_plots/
