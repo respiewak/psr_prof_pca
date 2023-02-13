@@ -1311,7 +1311,9 @@ def sim_mjds(nobs=1000, min_lag=0.9, max_lag_frac=0.05):
         
     # check the epoch separations to ensure a realistic distribution
     lags = fake_mjds[1:] - fake_mjds[:-1]
-    if lags.min() < min_lag or lags.max() > nobs*max_lag_frac:
+    n = 0
+    while lags.max() > nobs*max_lag_frac or lags.min() < min_lag:
+        print("Running the {}th loop to fix lags")
         last_mjd = mjd_min
         lag_inc = np.zeros(len(fake_mjds))
         now_inc = 0
@@ -1328,8 +1330,11 @@ def sim_mjds(nobs=1000, min_lag=0.9, max_lag_frac=0.05):
             lag_inc[imjd] = now_inc
             
         fake_mjds += lag_inc
+        fake_mjds = np.array(sorted(fake_mjds))
+        lags = fake_mjds[1:] - fake_mjds[:-1]
+        n += 1
         
-    return(np.array(sorted(fake_mjds)))
+    return(fake_mjds)
 
 
 def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_change=False,
@@ -1385,11 +1390,11 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
         if strong:
             neigs = 4
             min_eigs = 2
-            eig_height = 0.8
+            eig_height = 0.6
         else:
             neigs = 3
             min_eigs = 1
-            eig_height = 0.4
+            eig_height = 0.3
             
         # generate up to 3 "eigenvectors"
         eigs = np.array([np.zeros(nbin) for A in range(neigs+min_eigs)])
@@ -1426,7 +1431,7 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
             change_mode = shape_change
             
         if change_mode == 'qp': # quasi-periodic; the best for testing the GP stuff
-            tau = np.random.randint(mjd_range/30, mjd_range/10) # random timescale between one-thirtieth and one-tenth the timespan
+            tau = np.random.randint(mjd_range/20, mjd_range/8) # random timescale between one-twentieth and one-eighth the timespan
             amp = np.array([np.random.normal(0.8, 0.2) for A in range(len(used_prof_comps))])
             offset = np.array([A/2 for A in amp])
             mode = None
@@ -1437,7 +1442,7 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
                 tau = np.random.normal(tau, 3*tau/nobs)
                 
                 # use a modified sinusoid with a constant offset (to prevent too much negative "emission")
-                eig = amp*np.sin((mjd-47850)*2*np.pi/tau)\
+                eig = amp*np.sin((mjd-fake_mjds.min())*2*np.pi/tau)\
                       + offset + np.random.normal(0, amp/5)
                 
                 return(eig, tau, None)
@@ -1487,7 +1492,7 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
                 fig = plt.figure(num=0)
                 fig.set_size_inches(7, 5.5)
                 fig.suptitle('Eigenvectors')
-                for icomp_eig in range(len(used_prof_comps)):
+                for icomp_eig in range(len(eigs)):
                     plt.plot(eigs[icomp_eig])
                     
                 plt.xlabel('Phase bins')
@@ -1572,7 +1577,8 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
     return(data, fake_mjds, fake_tobs)
 
 
-def make_fake_profile(ncomp=2, noise_sigma=0.02, nbin=512, no_ip=None):
+def make_fake_profile(ncomp=2, noise_sigma=0.02, nbin=512, no_ip=None,
+                      not_wide=False):
     """
     Produce a fake profile with the given number of Gaussian components
     If ncomp > 2, profile may (10% chance) have a main pulse and interpulse
@@ -1588,6 +1594,7 @@ def make_fake_profile(ncomp=2, noise_sigma=0.02, nbin=512, no_ip=None):
         nbin - int, the number of phase bins for the profile
         no_ip - bool or None, whether to prohibit or guarantee the presence
             of an interpulse (True/False) or leave it to chance (None)
+        not_wide - bool, whether to prevent the components from being too wide
             
     Output:
         a 1D numpy array of length `nbin` representing the profile
@@ -1598,8 +1605,8 @@ def make_fake_profile(ncomp=2, noise_sigma=0.02, nbin=512, no_ip=None):
     """
     
     prof = np.zeros(nbin)
-    # put the centre of the main component at roughly phase 0.25
-    centre = nbin/4
+    # put the centre of the main component at roughly phase 0.5
+    centre = nbin/2
     width = 0.01*nbin
     height = 1
     
@@ -1611,9 +1618,11 @@ def make_fake_profile(ncomp=2, noise_sigma=0.02, nbin=512, no_ip=None):
     for icomp in np.arange(ncomp)+1:
         centre += int(np.random.normal(scale=width*2))
         
-        width *= np.random.lognormal(sigma=0.8)
-        while width > nbin/3:
-            width = 0.01*nbin*np.random.lognormal(sigma=0.8)
+        wid_sig = 0.4 if not_wide else 0.8
+        width *= np.random.lognormal(sigma=wid_sig)
+        wid_lim = nbin/5 if not_wide else nbin/3
+        while width > wid_lim:
+            width = 0.01*nbin*np.random.lognormal(sigma=wid_sig)
             
         height = (1/icomp) + np.random.randint(5)/10
         if icomp > 2:
@@ -1897,12 +1906,12 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
         return(-gp.grad_log_likelihood(data, quiet=True))
     
     def do_sampling(gp, pool, func, use_errs=False, long_chain=False, verb=False):
-        nwalkers, ndim = 36, len(gp) # why 36 walkers??
-        burn_chain = 400
-        prod_chain = 20000
+        nwalkers, ndim = 200, len(gp)
+        burn_chain = 500
+        prod_chain = 2000
         if long_chain:
-            burn_chain *= 4
-            prod_chain *= 4
+            burn_chain *= 2
+            prod_chain *= 2
         
         if use_errs:
             burn_chain *= 2
@@ -1917,6 +1926,16 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
             
         s = sampler.run_mcmc(p0, burn_chain, progress=verb)
         samp0 = s[0]
+        lp = s[1]
+        
+        samp0 = samp0[np.argmax(lp)] + 1e-8 * np.random.randn(nwalkers, ndim)
+        sampler.reset()
+        if verb:
+            print("Running second burn-in")
+            
+        s = sampler.run_mcmc(p0, burn_chain, progress=verb)
+        samp0 = s[0]
+        sampler.reset()
 
         if verb:
             print("Running production chain")
@@ -1973,8 +1992,8 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
                 
             lim = np.array([np.isfinite(A) for A in tau_a])
             if not np.any(lim):
-                print("Invalid autocorrelation times; using default of 200")
-                tau = 200
+                print("Invalid autocorrelation times; using default of 100")
+                tau = 100
             else:
                 tau = np.mean(tau_a[lim])
                 
@@ -2086,15 +2105,16 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
                 plt.clf()
                 gp_names = gp.get_parameter_names()
                 #gp_bounds = gp.get_parameter_bounds()
-                gp_bounds = [1 for A in gp_names]
+                #gp_bounds = [1 for A in gp_names]
+                gp_bounds = [(-11.5, -9.5), (-10, -8), (4, 12)]
                 gp_bounds[-1] = (np.log(prior_min), np.log(prior_max))
                 corner.corner(flat_samps, labels=gp_names, range=gp_bounds, color=best_colour)
                 if plot_dir is not None:
                     plt.savefig(os.path.join(plot_dir, 'gp_corner_{}.png'.format(num)), bbox_inches='tight')
-        
+
                 if show_plots:
                     plt.show()
-                    
+
         pred, pred_var = gp.predict(eigval, mjds_pred, return_var=True)
         pred_res[num,:] = pred
         pred_vars[num,:] = pred_var

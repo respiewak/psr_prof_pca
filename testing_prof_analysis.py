@@ -95,7 +95,7 @@ if not os.path.exists(plot_dir):
 #get_ipython().run_line_magic('pinfo', 'make_fake_profile')
 
 # generate a normal noisy profile but save the parameters to make a noiseless version later
-prof, cens, wids, hits = make_fake_profile(4, 0.01, no_ip=True)
+prof, cens, wids, hits = make_fake_profile(4, 0.01, no_ip=True, not_wide=True)
 
 with plt.style.context(plot_style):
     plt.clf()
@@ -137,7 +137,7 @@ print("The equivalent width is {:d} bins, and the S/N is {:.3f}".format(width, s
 # 
 
 # using a newly-generated average profile with nulling, and no shape variation or phase misalignment
-fakedata, fake_mjds, fake_tobs = make_fake_obss(avg_shape=3, nobs=500, nbin=512, shape_change=False,
+fakedata, fake_mjds, fake_tobs = make_fake_obss(avg_shape=3, nobs=1000, nbin=512, shape_change=False,
                                                 null_time=10, on_time=20, # these values are in days
                                                 verb=True, plot_style=plot_style, no_misalign=True,
                                                 show_plot=False)
@@ -148,8 +148,8 @@ prof_noiseless = np.zeros(512)
 for icomp in range(len(cens)):
     prof_noiseless = add_gauss(prof_noiseless, cens[icomp], wids[icomp], hits[icomp])
 
-fakedata, fake_mjds, fake_tobs = make_fake_obss(avg_shape=prof_noiseless, nobs=500, shape_change='qp', null_time=None,
-                                                verb=True, plot_style=plot_style, no_misalign=False, strong=True,
+fakedata, fake_mjds, fake_tobs = make_fake_obss(avg_shape=prof_noiseless, nobs=1000, shape_change='qp', null_time=None,
+                                                verb=True, plot_style=plot_style, no_misalign=False,# strong=True,
                                                 show_plot=False, save_plot=os.path.join(plot_dir, 'input_eigvecs.png'))
 print("Using the dataset with shape variations")
 
@@ -207,10 +207,18 @@ phase = np.linspace(0, 1, test_nbin)
 
 # define on-pulse ranges as fractions
 one_bin = 1/test_nbin
-peak_min = np.max(phase[lim][phase[lim] < 0.25])-2*one_bin
-peak_max = np.min(phase[lim][phase[lim] > 0.25])+2*one_bin
-off_min = peak_min/2
-off_max = min(2*peak_max - peak_min, 0.7)
+shift_centre = 0
+if len(phase[lim][phase[lim] < 0.25]) == 0:
+    print("Need to roll the array to centre the peak at phase=0.5")
+    fake_template = np.roll(fake_template, test_nbin//4)
+    fake_aligned = np.roll(fake_aligned, test_nbin//4, axis=0)
+    lim, _ = _find_off_pulse(fake_template)
+    shift_centre = 0.25
+
+peak_min = np.max(phase[lim][phase[lim] < 0.25+shift_centre])-2*one_bin
+peak_max = np.min(phase[lim][phase[lim] > 0.25+shift_centre])+2*one_bin
+off_min = peak_min - min(peak_min/2, 0.05)
+off_max = min(2*peak_max - peak_min, 0.7+shift_centre)
 
 # plot the template to find the on-pulse region
 with plt.style.context(plot_style):
