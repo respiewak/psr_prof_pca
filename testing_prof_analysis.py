@@ -206,14 +206,11 @@ test_nbin = len(fake_template)
 phase = np.linspace(0, 1, test_nbin)
 
 # define on-pulse ranges as fractions
-ip = False # Change this as necessary
 one_bin = 1/test_nbin
 peak_min = np.max(phase[lim][phase[lim] < 0.25])-2*one_bin
 peak_max = np.min(phase[lim][phase[lim] > 0.25])+2*one_bin
 off_min = peak_min/2
 off_max = min(2*peak_max - peak_min, 0.7)
-ip_min = 0.72
-ip_max = 0.79
 
 # plot the template to find the on-pulse region
 with plt.style.context(plot_style):
@@ -236,9 +233,6 @@ with plt.style.context(plot_style):
 test_bins = np.linspace(0, 1, num=fake_aligned.shape[0], endpoint=False)
 test_mask = np.logical_and(test_bins > off_min, test_bins < off_max)
 test_off = np.logical_or(test_bins[test_mask] < peak_min, test_bins[test_mask] > peak_max)
-if ip:
-    test_mask = np.logical_or(test_mask, np.logical_and(test_bins > ip_min, test_bins < ip_max))
-    test_off = np.logical_or(test_bins[test_mask] < peak_min, np.logical_and(test_bins[test_mask] > peak_max, test_bins[test_mask] < off_max))
 
 # test the PCA stuff
 test_pca = PCA(n_components=30)
@@ -295,11 +289,11 @@ with plt.style.context(plot_style):
     #plt.show()
     plt.savefig(os.path.join(plot_dir, 'lag_hist.png'), bbox_inches='tight')
     
-pmin = np.percentile(lags, 97)
-nobs = len(fake_mjds_new)
+pmin = np.percentile(lags, 99.5)
+mjd_range = fake_mjds_new[-1] - fake_mjds_new[0]
 
 pred_res, pred_vars, mjds_pred = run_each_gp(test_comps_all, fake_mjds_new, new_errs, kern_len=50, max_num=4,
-                                             prior_min=pmin**2, prior_max=nobs**2, long=True, plot_chains=True,
+                                             prior_min=pmin**2, prior_max=(0.5*mjd_range)**2, long=True, plot_chains=True,
                                              plot_corner=True, plot_gps=True, mcmc=True, multi=True, verb=True,
                                              bk_bgd=use_bk_bgd, plot_dir=plot_dir, show_plots=False,
                                              gp_plotname=os.path.join(plot_dir, 'gp_eigs_res.png'))

@@ -1,7 +1,6 @@
 ##  Author: Renee Spiewak
 
 
-
 import os, sys
 import numpy as np
 from matplotlib import pyplot as plt
@@ -1284,6 +1283,55 @@ def find_eq_width_snr(prof, verb=False, plot_style='dark_background'):
     return(best_wid, best_snr)
 
 
+def sim_mjds(nobs=1000, min_lag=0.9, max_lag_frac=0.05):
+    """
+    Make fake MJDs for an 'observing programme' with a minimum cadence
+    Ensure no separations between consecutive dates exceed a fraction of the number of observations
+    
+    Input:
+        nobs - int, the length of the output array, the number of 'observations'
+        min_lag - float, the minimum acceptable separation between MJDs, in days
+        max_lag_frac - float, the maximum acceptable separation as a fraction of `nobs`
+        
+    Output:
+        a 1D numpy array of floats representing the dates of the 'observations'
+    
+    """
+    
+    # make fake MJD values
+    mjd_min = 49350 + np.random.randint(100)/np.random.randint(1, 100)
+    fake_mjds = np.array(sorted(mjd_min + np.random.randint(nobs*np.random.lognormal(sigma=0.8), size=nobs)\
+                                + np.random.normal(size=nobs)))
+    
+    # require the average lag to exceed twice the minimum acceptable cadence
+    while np.max(fake_mjds)-np.min(fake_mjds) < nobs*2*min_lag:
+        fake_mjds += np.random.lognormal(np.log(2*min_lag), 0.6, size=nobs)
+        
+    fake_mjds = np.array(sorted(fake_mjds))
+        
+    # check the epoch separations to ensure a realistic distribution
+    lags = fake_mjds[1:] - fake_mjds[:-1]
+    if lags.min() < min_lag or lags.max() > nobs*max_lag_frac:
+        last_mjd = mjd_min
+        lag_inc = np.zeros(len(fake_mjds))
+        now_inc = 0
+        for imjd, MJD in enumerate(fake_mjds):
+            if imjd == 0:
+                continue
+                
+            lag = lags[imjd-1]
+            if lag < min_lag:
+                now_inc += min_lag*2
+            elif lag > nobs*max_lag_frac:
+                now_inc -= int(lag - nobs*max_lag_frac*0.95)
+                
+            lag_inc[imjd] = now_inc
+            
+        fake_mjds += lag_inc
+        
+    return(np.array(sorted(fake_mjds)))
+
+
 def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_change=False,
                    null_time=22, on_time=6, verb=True, plot_style='dark_background',
                    no_misalign=False, strong=False, save_plot=None, show_plot=False):
@@ -1315,38 +1363,8 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
     
     """
     
-    # make fake MJD values
-    mjd_min = 49350 + np.random.randint(100)/np.random.randint(1, 100)
-    fake_mjds = np.array(sorted(mjd_min + np.random.randint(nobs*np.random.lognormal(sigma=0.8), size=nobs)\
-                                + np.random.normal(size=nobs)))
-    
-    # require the MJD range to exceed twice the number of observations
-    while np.max(fake_mjds)-mjd_min < nobs*2:
-        fake_mjds += np.random.lognormal(np.log(5), 0.6, size=nobs)
-        fake_mjds = np.array(sorted(fake_mjds))
-        
-    # check the epoch separations to ensure a realistic distribution
-    lags = fake_mjds[1:] - fake_mjds[:-1]
-    if lags.min() < 0.9 or lags.max() > nobs/3:
-        last_mjd = mjd_min
-        lag_inc = np.zeros(len(fake_mjds))
-        now_inc = 0
-        for imjd, MJD in enumerate(fake_mjds):
-            if imjd == 0:
-                continue
-                
-            lag = lags[imjd-1]
-            if lag < 0.9:
-                now_inc += 2
-            elif lag > nobs/20:
-                now_inc -= int(lag - nobs/25)
-                
-            lag_inc[imjd] = now_inc
-            
-        fake_mjds += lag_inc
-        
-    fake_mjds = np.array(sorted(fake_mjds))
-    mjd_range = np.max(fake_mjds) - mjd_min
+    fake_mjds = sim_mjds(nobs)
+    mjd_range = np.max(fake_mjds) - np.min(fake_mjds)
     
     # set the mean noise level (off-pulse rms)
     noise_rms = 0.02 if low_noise else 0.15
