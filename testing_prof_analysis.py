@@ -53,6 +53,7 @@ args = vars(pars.parse_args())
 
 # Set up some plotting stuff
 plt.rcParams["figure.figsize"] = (6, 10)
+plt.rc('savefig', bbox='tight')
 use_bk_bgd = args['bk_bgd']
 if use_bk_bgd:
     plot_style = 'dark_background'
@@ -107,7 +108,7 @@ with plt.style.context(plot_style):
     plt.xlabel('Phase bins')
     plt.ylabel('Amplitude')
     #plt.show()
-    plt.savefig(os.path.join(plot_dir, 'in_avg_prof.png'), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_dir, 'in_avg_prof.png'))
 
 # this cell just demonstrates the method used to find the width of the profile
 width, snr = find_eq_width_snr(prof, verb=False, plot_style=plot_style)
@@ -142,8 +143,7 @@ fakedata, fake_mjds, fake_tobs = make_fake_obss(avg_shape=3, nobs=1000, nbin=512
                                                 verb=True, plot_style=plot_style, no_misalign=True,
                                                 show_plot=False)
 
-## Uncomment below to generate a different dataset
-## using a previously generated profile (noiseless) with with quasi-periodic shape variation and phase misalignment, and no nulling
+# using a previously generated profile (noiseless) with with quasi-periodic shape variation and phase misalignment, and no nulling
 prof_noiseless = np.zeros(512)
 for icomp in range(len(cens)):
     prof_noiseless = add_gauss(prof_noiseless, cens[icomp], wids[icomp], hits[icomp])
@@ -165,7 +165,7 @@ with plt.style.context(plot_style):
     plt.ylabel('Amplitude')
     plt.xlabel('Phase bins')
     #plt.show()
-    plt.savefig(os.path.join(plot_dir, 'raw_avg_prof.png'), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_dir, 'raw_avg_prof.png'))
 
 # ## Cleaning and aligning profiles
 # 
@@ -236,7 +236,7 @@ with plt.style.context(plot_style):
     plt.xlabel('Phase (turns)', fontsize=12)
     plt.text(0.75, 0.87, 'The cuts are: {:.2f}, {:.2f}, {:.2f}, {:.2f}'.format(off_min, peak_min, peak_max, off_max), transform=ax.transAxes)
     #plt.show()
-    plt.savefig(os.path.join(plot_dir, 'template.png'), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_dir, 'template.png'))
 
 test_bins = np.linspace(0, 1, num=fake_aligned.shape[0], endpoint=False)
 test_mask = np.logical_and(test_bins > off_min, test_bins < off_max)
@@ -264,7 +264,7 @@ with plt.style.context(plot_style):
     plt.ylabel('Arbitrary amplitude')
     plt.tight_layout()
     #plt.show()
-    plt.savefig(os.path.join(plot_dir, 'test_eigvecs.png'), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_dir, 'test_eigvecs.png'))
 
 new_errs = err_eigval(fake_aligned[test_mask,:], test_pca.components_, test_off)
 
@@ -278,7 +278,7 @@ with plt.style.context(plot_style):
     ax1.errorbar(fake_mjds_new, test_comps_all[:,1], yerr=new_errs[:,1], fmt='s', ecolor=c2, mec=c2, mfc=c2)
     ax1.errorbar(fake_mjds_new, test_comps_all[:,0], yerr=new_errs[:,0], fmt='*', ecolor=c1, mec=c1, mfc=c1, ms=9)
     #plt.show()
-    plt.savefig(os.path.join(plot_dir, 'eigvals_vs_mjd.png'), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_dir, 'eigvals_vs_mjd.png'))
 
 # ## Running the Gaussian Process with Markov Chain Monte Carlo
 # 
@@ -295,7 +295,7 @@ with plt.style.context(plot_style):
     plt.xlabel('Lag (days)')
     print("The mean lag between observation epochs is {:.2f}".format(np.mean(lags)))
     #plt.show()
-    plt.savefig(os.path.join(plot_dir, 'lag_hist.png'), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_dir, 'lag_hist.png'))
     
 pmin = np.percentile(lags, 99.5)
 mjd_range = fake_mjds_new[-1] - fake_mjds_new[0]
@@ -321,7 +321,7 @@ with plt.style.context(plot_style):
     plt.ylabel('Counts')
     plt.xlabel('S/N')
     #plt.show()
-    plt.savefig(os.path.join(plot_dir, 'snr_hist.png'), bbox_inches='tight')
+    plt.savefig(os.path.join(plot_dir, 'snr_hist.png'))
 
 if 'check_null_prob' in globals():
     null_prob = check_null_prob(fake_aligned, peak_bin=128, ip=False, on_min=None, onf_range=None, off_min=None)
@@ -333,5 +333,7 @@ if 'check_null_prob' in globals():
         plt.ylabel('Fractional Probability')
         plt.xlabel('Observation Number')
         #plt.show()
-        plt.savefig(os.path.join(plot_dir, 'null_prob.png'), bbox_inches='tight')
+        plt.savefig(os.path.join(plot_dir, 'null_prob.png'))
+else:
+    print("Skipping the nulling probability analysis")
 

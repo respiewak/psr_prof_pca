@@ -498,8 +498,22 @@ def rem_base_outs(data, mjds, tobs=None, threshold=1.5, wide=False, logg=None, c
     """
     
     data = np.nan_to_num(data, 1e-6)
+    phase = np.linspace(0, 1, data.shape[0])
     
-    all_rms, all_bln = get_rms_bline(data, test=False)
+    # find the width of the peaks and the off-pulse rms and baseline
+    all_wid = []
+    all_rms = []
+    all_bln = []
+    for prof in data.T:
+        lim, width = _find_off_pulse(prof)
+        all_wid.append(width)
+        all_rms.append(np.sqrt(np.mean(prof[lim]**2)))
+        all_bln.append(np.mean(prof[lim]))
+        
+    all_wid = np.array(all_wid)
+    all_rms = np.array(all_rms)
+    all_bln = np.array(all_bln)
+    
     data_subd = data - all_bln    
     rms_avg = all_rms.mean()
     rms_med = np.median(all_rms)
@@ -526,12 +540,6 @@ def rem_base_outs(data, mjds, tobs=None, threshold=1.5, wide=False, logg=None, c
         lim2 = np.array([True for a in all_rms])
      
     # also check the pulse widths
-    all_wid = []
-    for prof in data.T:
-        _, width = _find_off_pulse(prof)
-        all_wid.append(width)
-        
-    all_wid = np.array(all_wid)
     wid_men = all_wid.mean()
     # beware of bimodal/wide distributions
     if wide:
@@ -1177,7 +1185,7 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
     sum_val = np.sum(a_aln[lim_on,:], axis=0)
     sum_val = np.nan_to_num(sum_val)
     if len(sum_val.shape) > 1:
-        raise(TypeError("Array has more than 1 dimension??"))
+        raise(TypeError("Array of sums has more than 1 dimension??"))
         
     min_pos = np.min(sum_val[sum_val >= 0])
     for i, val in enumerate(sum_val):
@@ -1283,7 +1291,7 @@ def find_eq_width_snr(prof, verb=False, plot_style='dark_background'):
     return(best_wid, best_snr)
 
 
-def sim_mjds(nobs=1000, min_lag=0.9, max_lag_frac=0.05):
+def sim_mjds(nobs=1000, min_lag=0.9, max_lag_frac=0.02):
     """
     Make fake MJDs for an 'observing programme' with a minimum cadence
     Ensure no separations between consecutive dates exceed a fraction of the number of observations
@@ -1300,20 +1308,20 @@ def sim_mjds(nobs=1000, min_lag=0.9, max_lag_frac=0.05):
     
     # make fake MJD values
     mjd_min = 49350 + np.random.randint(100)/np.random.randint(1, 100)
-    fake_mjds = np.array(sorted(mjd_min + np.random.randint(nobs*np.random.lognormal(sigma=0.8), size=nobs)\
+    fake_mjds = np.array(sorted(mjd_min + np.random.randint(nobs*np.random.lognormal(sigma=0.6), size=nobs)\
                                 + np.random.normal(size=nobs)))
     
     # require the average lag to exceed twice the minimum acceptable cadence
     while np.max(fake_mjds)-np.min(fake_mjds) < nobs*2*min_lag:
-        fake_mjds += np.random.lognormal(np.log(2*min_lag), 0.6, size=nobs)
+        fake_mjds += np.random.lognormal(np.log(2*min_lag), 0.4, size=nobs)
         
     fake_mjds = np.array(sorted(fake_mjds))
+    fake_mjds -= fake_mjds.min() - mjd_min
         
     # check the epoch separations to ensure a realistic distribution
     lags = fake_mjds[1:] - fake_mjds[:-1]
     n = 0
     while lags.max() > nobs*max_lag_frac or lags.min() < min_lag:
-        print("Running the {}th loop to fix lags")
         last_mjd = mjd_min
         lag_inc = np.zeros(len(fake_mjds))
         now_inc = 0
