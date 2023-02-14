@@ -11,10 +11,15 @@ from matplotlib import colors as col
 import cmasher as cmr
 import argparse as ap
 import scipy.optimize as op
-from nudot_prof_functions import (do_rem_aln, aligndata, smart_align, removebaseline, calc_snr,
-                                  check_null_prob, _find_off_pulse, rem_extra_noisy, rem_base_outs,
-                                  get_rms_bline, _gauss_2, find_bright, findbrightestprofile,
-                                  read_pdv, plot_joydivision, setup_log, read_bad_mjd_file)
+from all_prof_functions import (do_rem_aln, aligndata, smart_align, removebaseline, calc_snr,
+                                _find_off_pulse, rem_extra_noisy, rem_base_outs,
+                                get_rms_bline, _gauss_2, find_bright, findbrightestprofile,
+                                read_pdv, plot_joydivision, setup_log, read_bad_mjd_file)
+
+try:
+    from all_prof_functions import check_null_prob
+except OSError:
+    print("Cannot load nulling module; skipping that part of the analysis")
 
 plt.rcParams["figure.figsize"] = (6, 10)
 
@@ -121,7 +126,7 @@ for psr in psr_list:
 
             plt.close('all')
 
-            if do_snrs:
+            if do_snrs and 'check_null_prob' in globals():
                 proceed = True
                 logger.info("Doing S/N and nulling stuff")
                 snrs = calc_snr(var_dict[BE+'_aligned'])

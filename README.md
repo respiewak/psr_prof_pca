@@ -97,17 +97,38 @@ The output plots should be examined after this step to ensure the cleaning and a
 ### Principal Component Analysis of the profiles
 * * *
 
+#### Background
+* * *
+
+Most previous analyses of profile variation have run a Gaussian Process on the observations, for each bin in the on-pulse region (i.e., a dimensionality of Nbin by Nobs). The bins were treated as independent from each other. One possible way to improve upon this is to run a 2D Gaussian Process, but this is computationally expensive. 
+
+Another method is to first use PCA to extract relevant eigenvectors and their eigenvalues for each observation, and then to run the Gaussian Process on the eigenvalues for the most significant eigenvectors (this is usually 2-5 eigenvectors). The predicted eigenvalues can be used to reconstruct profiles for any date in the time range, and the smoothed values can be compared with nu-dot or other parameters to find correlations. In addition, the eigenvectors directly represent the variations in the profile, making for easy interpretation. 
+
+
+#### Running the analysis
+
 Run
-> `$ jupyter [lab|notebook] second_profile_pca.ipynb`
+> `jupyter [lab|notebook] second_profile_pca.ipynb`
 
 and follow the steps outlined. As with the previous step, most plots are also saved to the `<data_dir>/plots` directory. 
+
+The first step in this part of the analysis is to set the region used by the PCA. It is not optimal to include excessive amounts of the off-pulse region, but the calculation of uncertainties on the eigenvalues requires some off-pulse region to be included. These regions are defined automatically (with the exception of any interpulse region) but can be modified if necessary. (Note that the region input to the PCA need not be contiguous, so the ''jump'' from the `off_max` value to the `ip_min` value is fine.) 
+
+
+The PCA is run on the input profiles (with the `PCA` class from `scikit-learn`) using a mask to select the desired bin range. The output eigenvectors are contained in `out_pca.components_` and the eigenvalues in `out_comps_all`. (The PCA is hard-coded to retain the 30 most significant components/eigenvectors; this has been fine for my work but can be adjusted if necessary.) 
+
+
+It is important to check the eigenvectors and eigenvalues for any outliers, whether due to misaligned profiles or RFI or simply noisy profiles. In particular, check the plot of the eigenvalues for the first 4 eigenvectors versus MJD. You can select outliers from this plot and check the input profile, and the MJD is printed to allow you to add it to a `bad_mjds` list if necessary. Note that you will need to re-run the first part of the analysis after identifying bad profiles for removal, and then to re-run this second part of the analysis. 
+
+
+At this time, there is a redimentary ''binning'' of the eigenvalues at the end of this part, but this is not crucial to the analysis and will be removed. 
 
 
 ### Gaussian Process on the eigenvalues
 * * *
 
 Run
-> `$ jupyter [lab|notebook] third_eigenvalue_gps.ipynb`
+> `jupyter [lab|notebook] third_eigenvalue_gps.ipynb`
 
 and follow the steps outlined. As with the previous steps, most plots are also saved to the `<data_dir>/plots` directory. 
 

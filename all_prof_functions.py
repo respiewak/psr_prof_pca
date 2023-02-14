@@ -1928,7 +1928,7 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
         sampler = emcee.EnsembleSampler(nwalkers, ndim, func, pool=pool)
     
         # Initialize the walkers
-        p0 = gp.get_parameter_vector() + 1e-1 * np.random.randn(nwalkers, ndim)
+        p0 = gp.get_parameter_vector() + 1e-3 * np.random.randn(nwalkers, ndim)
         if verb:
             print("Running burn-in")
             
