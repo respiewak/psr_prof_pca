@@ -1195,9 +1195,9 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
     a_aln_norm = a_aln/sum_val
     
     if logg:
-        logg.info("In total, removed {} observations, aligned remaining obs., and normalised according to peak height".format(nobs_in - a_aln_norm.shape[1]))
+        logg.info("In total, removed {} observations, aligned remaining obs., and normalised according to on-pulse sum".format(nobs_in - a_aln_norm.shape[1]))
     elif not quiet:
-        print("In total, removed {} observations, aligned remaining obs., and normalised according to peak height".format(nobs_in - a_aln_norm.shape[1]))
+        print("In total, removed {} observations, aligned remaining obs., and normalised according to on-pulse sum".format(nobs_in - a_aln_norm.shape[1]))
     
     return(a_aln_norm, a_temp_norm, a_mjds_new, a_tobs_new)
 
@@ -1928,7 +1928,7 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
         sampler = emcee.EnsembleSampler(nwalkers, ndim, func, pool=pool)
     
         # Initialize the walkers
-        p0 = gp.get_parameter_vector() + 1e-3 * np.random.randn(nwalkers, ndim)
+        p0 = gp.get_parameter_vector() + 0.5*np.random.randn(nwalkers, ndim)
         if verb:
             print("Running burn-in")
             
@@ -1936,7 +1936,7 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
         samp0 = s[0]
         lp = s[1]
         
-        samp0 = samp0[np.argmax(lp)] + 1e-8 * np.random.randn(nwalkers, ndim)
+        samp0 = samp0[np.argmax(lp)] + 0.5*np.random.randn(nwalkers, ndim)
         sampler.reset()
         if verb:
             print("Running second burn-in")
@@ -2000,8 +2000,8 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
                 
             lim = np.array([np.isfinite(A) for A in tau_a])
             if not np.any(lim):
-                print("Invalid autocorrelation times; using default of 100")
-                tau = 100
+                print("Invalid autocorrelation times; using default of 50")
+                tau = 50
             else:
                 tau = np.mean(tau_a[lim])
                 
