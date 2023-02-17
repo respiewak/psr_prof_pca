@@ -2057,9 +2057,9 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, l
     # Define the objective function (negative log-likelihood in this case)
     def get_prob_funs(p_min, p_max):
         def neg_log_like(p):
-            #l = p[-1]
-            #if l < np.log(p_min) or l > np.log(p_max):
-            #    return(1e25)
+            l = p[1]
+            if l < np.log(p_min) or l > np.log(p_max):
+                return(1e25)
         
             gp.set_parameter_vector(p)
             log_like = gp.log_likelihood(data, quiet=True)
@@ -2068,10 +2068,10 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, l
     
         def logprob(p):
             # Trivial uniform prior
-            #if p[-1] < np.log(p_min) or p[-1] > np.log(p_max):
-            #    return(-np.inf)
+            if p[1] < np.log(p_min) or p[1] > np.log(p_max):
+                return(-np.inf)
             
-            if np.any((-100 > p[1:]) + (p[1:] > 100)):
+            if np.any((-50 > p) + (p > 50)):
                 return(-np.inf)
         
             # Update the kernel and compute the log-likelihood
@@ -2098,20 +2098,20 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, l
         sampler = emcee.EnsembleSampler(nwalkers, ndim, func, pool=pool)
     
         # Initialize the walkers
-        p0 = gp.get_parameter_vector() + np.random.randn(nwalkers, ndim)
+        p0 = gp.get_parameter_vector() + 0.5*np.random.randn(nwalkers, ndim)
         if verb:
             print("Running burn-in")
             
         s = sampler.run_mcmc(p0, burn_chain, progress=verb)
         samp0 = s[0]
-        #lp = s[1]
+        lp = s[1]
         
-        #samp0 = samp0[np.argmax(lp)] + 0.1*np.random.randn(nwalkers, ndim)
-        #sampler.reset()
-        #if verb:
-        #    print("Running second burn-in")
+        samp0 = samp0[np.argmax(lp)] + 0.1*np.random.randn(nwalkers, ndim)
+        sampler.reset()
+        if verb:
+            print("Running second burn-in")
             
-        #s = sampler.run_mcmc(p0, burn_chain, progress=verb)
+        s = sampler.run_mcmc(p0, burn_chain, progress=verb)
         samp0 = s[0]
         sampler.reset()
 
@@ -2122,7 +2122,9 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, l
         return(sampler, ndim)
         
     variance = np.var(data)
-    kernel = cel.terms.Matern32Term(np.log(1), np.log(kern_len)) + cel.terms.JitterTerm(np.log(np.sqrt(variance)))
+    kernel = cel.terms.Matern32Term(np.log(1), np.log(kern_len),
+                                    bounds=dict(log_sigma=(-15, 15), log_rho=(np.log(prior_min), np.log(prior_max))))\
+             + cel.terms.JitterTerm(np.log(np.sqrt(variance)), bounds=dict(log_sigma=(-15, 15)))
     if 'gp' in locals() or 'gp' in globals():
         del gp
         
@@ -2512,8 +2514,8 @@ def write_gp_init_threads(prior_min, prior_max, use_george=False):
     std_text = """##  Author: Renee Spiewak
 
 
-import {}
 import numpy as np
+import {}
 
 
 def init_thread(kern_len, _data, mjds, errs=None):
@@ -2534,11 +2536,11 @@ def init_thread(kern_len, _data, mjds, errs=None):
 def lnprob(p):
     global gp
     global data
-    # Trivial uniform prior
-    #if p[-1] < np.log({:.1e}) or p[-1] > np.log({:.1e}):
-    #    return(-np.inf)
+    # Trivial uniform prior on length scale
+    if p[1] < np.log({:.1e}) or p[1] > np.log({:.1e}):
+        return(-np.inf)
             
-    if np.any((-100 > p[1:]) + (p[1:] > 100)):
+    if np.any((-50 > p) + (p > 50)):
         return(-np.inf)
         
     # Update the kernel and compute the log-likelihood

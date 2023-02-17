@@ -1,8 +1,8 @@
 ##  Author: Renee Spiewak
 
 
-import celerite as cel
 import numpy as np
+import celerite as cel
 
 
 def init_thread(kern_len, _data, mjds, errs=None):
@@ -23,11 +23,11 @@ def init_thread(kern_len, _data, mjds, errs=None):
 def lnprob(p):
     global gp
     global data
-    # Trivial uniform prior
-    #if p[-1] < np.log(3.2e+02) or p[-1] > np.log(1.5e+06):
-    #    return(-np.inf)
+    # Trivial uniform prior on length scale
+    if p[1] < np.log(5.8e+01) or p[1] > np.log(2.5e+03):
+        return(-np.inf)
             
-    if np.any((-100 > p[1:]) + (p[1:] > 100)):
+    if np.any((-50 > p) + (p > 50)):
         return(-np.inf)
         
     # Update the kernel and compute the log-likelihood
