@@ -2394,7 +2394,7 @@ def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset
                 ax.set_ylabel('Eigenvalue', fontsize=12)
                 axes_list[num] = ax
                 ax.fill_between(mjds_pred, preds - np.sqrt(predv), preds + np.sqrt(predv),
-                                 color='k', alpha=k_alpha, zorder=10)
+                                 color=lc, alpha=k_alpha, zorder=10)
                 ax.plot(mjds_pred, preds, lc, lw=1.5, zorder=20)
                 if data_errs is not None:
                     ax.errorbar(mjds, eigv, yerr=eiger, fmt='k.', mfc=c3, mec=c3, ecolor=c3, ms=8, zorder=1)
@@ -2403,7 +2403,7 @@ def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset
         
         else:
             plt.fill_between(mjds_pred, pred_res - np.sqrt(pred_var), pred_res + np.sqrt(pred_var),
-                             color='k', alpha=k_alpha)
+                             color=lc, alpha=k_alpha)
             plt.plot(mjds_pred, pred_res, lc, lw=1.5)
             if data_errs is not None:
                 plt.errorbar(mjds, data, yerr=d_errs, fmt='k.', mfc=c3, mec=c3, ecolor=c3, ms=8, zorder=1)

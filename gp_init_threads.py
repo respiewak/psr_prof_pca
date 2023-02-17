@@ -24,7 +24,7 @@ def lnprob(p):
     global gp
     global data
     # Trivial uniform prior on length scale
-    if p[1] < np.log(5.8e+01) or p[1] > np.log(2.5e+03):
+    if p[1] < np.log(8.2e+01) or p[1] > np.log(2.5e+03):
         return(-np.inf)
             
     if np.any((-50 > p) + (p > 50)):
