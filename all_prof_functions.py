@@ -2280,13 +2280,13 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
                         suff = 'th'
                         
                     flats = flat_samps[:,q_num]
-                    if round(min(flats), 3) < round(val[0], 3):
+                    if round(min(flats), 2) < round(val[0]-0.005, 2):
                         print("The {:d}{:s} lower bound was breached, reaching a min. of {:.2f}".format(q_num, suff, min(flats)))
 
                     diff_min = abs(min(flats) - val[0])
                     min_val = max(val[0], min(flats) - 0.1*diff_min)
                         
-                    if round(max(flats), 3) > round(val[1], 3):
+                    if round(max(flats), 2) > round(val[1]+0.005, 2):
                         print("The {:d}{:s} upper bound was breached, reaching a max. of {:.2f}".format(q_num, suff, max(flats)))
                     
                     diff_max = abs(max(flats) - val[1])
@@ -2549,7 +2549,7 @@ def lnprob(p):
     global gp
     global data
     # Trivial uniform prior on length scale
-    if p[1] < np.log({:.1e}) or p[1] > np.log({:.1e}):
+    if p[1] < np.log({:.3e}) or p[1] > np.log({:.3e}):
         return(-np.inf)
             
     if np.any((-30 > p) + (p > 30)):
