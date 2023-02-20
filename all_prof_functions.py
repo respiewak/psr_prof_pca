@@ -1860,7 +1860,7 @@ if 'nm' in globals():
 
 
 # function stolen and modified from Aris' psrshape/PulseShape.py
-def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_chain=False,
+def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000,
            bchain=300, pchain=2000, nwalkers=100, mcmc=False, multi=False, verb=False):
     """
     Use george to model a Gaussian Process, with parameters optimised linearly or with emcee
@@ -1920,16 +1920,8 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
         return(-gp.grad_log_likelihood(data, quiet=True))
     
     def do_sampling(gp, pool, func, nwalkers=100, burn_chain=300, prod_chain=2000,
-                    use_errs=False, long_chain=False, verb=False):
+                    use_errs=False, verb=False):
         ndim = len(gp)
-        if long_chain:
-            burn_chain *= 2
-            prod_chain *= 2
-        
-        if use_errs:
-            burn_chain *= 2
-            prod_chain *= 2
-            
         sampler = emcee.EnsembleSampler(nwalkers, ndim, func, pool=pool)
     
         # Initialize the walkers
@@ -1992,10 +1984,10 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
         if multi:
             proc_count = mpr.cpu_count() - 1
             with mpr.Pool(proc_count, initializer=th_init.init_thread, initargs=(kern_len, data, mjds, errs)) as pool:
-                sampler, ndim = do_sampling(gp, pool, th_init.lnprob, nwalkers, bchain, pchain, use_errs, long_chain, verb)
+                sampler, ndim = do_sampling(gp, pool, th_init.lnprob, nwalkers, bchain, pchain, use_errs, verb)
                 
         else:
-            sampler, ndim = do_sampling(gp, None, logprob, nwalkers, bchain, pchain, use_errs, long_chain)
+            sampler, ndim = do_sampling(gp, None, logprob, nwalkers, bchain, pchain, use_errs, verb)
         
         # find the burn-in time
         try:
@@ -2026,7 +2018,7 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_
     return(gp, flat_samples)
 
 
-def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, long_chain=False,
+def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=300, prior_max=5000,
                bchain=300, pchain=2000, nwalkers=100, multi=False, verb=False):
     """
     Use celerite to model a Gaussian Process that is fit using emcee
@@ -2038,7 +2030,6 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, l
         errs - a 1D numpy array of the same length as `data`, representing the uncertainties on the measured data
         prior_min - a float representing the minimum bound of the length scale (linear in days)
         prior_max - a float representing the maximum bound of the length scale (linear in days)
-        long_chain - boolean
         bchain - int
         pchain - int
         nwalkers - int
@@ -2071,7 +2062,7 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, l
             if p[1] < np.log(p_min) or p[1] > np.log(p_max):
                 return(-np.inf)
             
-            if np.any((-50 > p) + (p > 50)):
+            if np.any((-30 > p) + (p > 30)):
                 return(-np.inf)
         
             # Update the kernel and compute the log-likelihood
@@ -2085,16 +2076,8 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, l
         gp.set_parameter_vector(p)
         return(-gp.grad_log_likelihood(data, quiet=True))
     
-    def do_sampling(gp, pool, func, nwalkers=100, burn_chain=300, prod_chain=2000, use_errs=False, long_chain=False, verb=False):
-        ndim = len(gp)
-        if long_chain:
-            burn_chain *= 2
-            prod_chain *= 2
-        
-        if use_errs:
-            burn_chain *= 2
-            prod_chain *= 2
-            
+    def do_sampling(gp, pool, func, nwalkers=100, burn_chain=300, prod_chain=2000, use_errs=False, verb=False):
+        ndim = len(gp)            
         sampler = emcee.EnsembleSampler(nwalkers, ndim, func, pool=pool)
     
         # Initialize the walkers
@@ -2122,9 +2105,10 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, l
         return(sampler, ndim)
         
     variance = np.var(data)
-    kernel = cel.terms.Matern32Term(np.log(1), np.log(kern_len),
-                                    bounds=dict(log_sigma=(-15, 15), log_rho=(np.log(prior_min), np.log(prior_max))))\
-             + cel.terms.JitterTerm(np.log(np.sqrt(variance)), bounds=dict(log_sigma=(-15, 15)))
+    term1 = cel.terms.Matern32Term(np.log(1), np.log(kern_len),
+                                   bounds=dict(log_sigma=(-15, 15), log_rho=(np.log(prior_min), np.log(prior_max))))
+    term2 = cel.terms.JitterTerm(np.log(np.sqrt(variance)), bounds=dict(log_sigma=(-15, 15)))
+    kernel = term1 + term2
     if 'gp' in locals() or 'gp' in globals():
         del gp
         
@@ -2145,10 +2129,10 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, l
     if multi:
         proc_count = mpr.cpu_count() - 1
         with mpr.Pool(proc_count, initializer=th_init.init_thread, initargs=(kern_len, data, mjds, errs)) as pool:
-            sampler, ndim = do_sampling(gp, pool, th_init.lnprob, nwalkers, bchain, pchain, use_errs, long_chain, verb)
+            sampler, ndim = do_sampling(gp, pool, th_init.lnprob, nwalkers, bchain, pchain, use_errs, verb)
                 
     else:
-        sampler, ndim = do_sampling(gp, None, logprob, nwalkers, bchain, pchain, use_errs, long_chain)
+        sampler, ndim = do_sampling(gp, None, logprob, nwalkers, bchain, pchain, use_errs, verb)
         
     # find the burn-in time
     try:
@@ -2180,8 +2164,8 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000, l
 
 
 def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200, prior_max=2000,
-                burn_chain=300, prod_chain=2000, num_walkers=100,
-                long=False, plot_gps=True, mcmc=True, multi=True, plot_chains=False, plot_corner=False,
+                burn_chain=300, prod_chain=5000, num_walkers=100,
+                plot_gps=True, mcmc=True, multi=True, plot_chains=False, plot_corner=False,
                 gp_plotname=None, bk_bgd=False, verb=True, plot_dir=None, show_plots=True):
     """
     Input:
@@ -2195,7 +2179,6 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
         burn_chain - int
         prod_chain - int
         num_walkers - int
-        long - bool
         plot_gps - bool
         mcmc - bool
         multi - bool
@@ -2203,7 +2186,7 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
         plot_corner - bool
         gp_plotname - str or NoneType, file name to use for the plot of resulting GPs
         bk_bgd - bool, whether to use a dark background for the plots
-        verb - bool, whether to be verbose with diagnose information
+        verb - bool, whether to be verbose with diagnostic information
         plot_dir - str or NoneType
         show_plots - bool
         
@@ -2232,22 +2215,22 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
         pred_vars = np.zeros((max_num+1, len(mjds_pred)))
         
     # loop over eigenvectors
-    for num, eigval in enumerate(data.T):
+    for eignum, eigval in enumerate(data.T):
         val_errs = None
         if errs is not None:
-            val_errs = errs[:,num]
+            val_errs = errs[:,eignum]
             
         # the heavy lifting
         if not mcmc: #keeping this for now
             gp, flat_samps = get_gp(eigval, mjds, kern_len, val_errs, prior_min, prior_max,
-                                    long_chain=long, bchain=burn_chain, pchain=prod_chain,
+                                    bchain=burn_chain, pchain=prod_chain,
                                     nwalkers=num_walkers, mcmc=mcmc, multi=multi, verb=verb)
         else:
             gp, flat_samps = get_gp_cel(eigval, mjds, kern_len, val_errs, prior_min, prior_max,
-                                        long_chain=long, bchain=burn_chain, pchain=prod_chain,
+                                        bchain=burn_chain, pchain=prod_chain,
                                         nwalkers=num_walkers, multi=multi, verb=verb)
         
-        print(gp.get_parameter_dict())
+        #print(gp.get_parameter_dict())
         if plot_gps or plot_chains or plot_corner:
             if bk_bgd:
                 plot_style = 'dark_background'
@@ -2260,7 +2243,7 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
         if plot_chains and flat_samps is not None:
             with plt.style.context(plot_style):
                 plt.clf()
-                fig = plt.figure(num=num+1)
+                fig = plt.figure(num=eignum+1)
                 fig.set_size_inches(10, 4)
                 ax = fig.gca()
                 ax.plot(flat_samps[:,1], '-', color=best_colour)
@@ -2282,23 +2265,49 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
                 plt.clf()
                 gp_names = gp.get_parameter_names()
                 gp_bounds = gp.get_parameter_bounds()
-                #gp_bounds = [1 for A in gp_names]
+                print("The bounds returned by the attribute are", gp_bounds)
                 #gp_bounds = [(-11.5, -9.5), (-10, -8), (4, 12)]
-                #gp_bounds[-1] = (np.log(prior_min), np.log(prior_max))
-                corner.corner(flat_samps, labels=gp_names,# range=gp_bounds, 
+                #gp_bounds[1] = (np.log(prior_min), np.log(prior_max))
+                gp_bounds = [(-15, 15), (np.log(prior_min), np.log(prior_max)), (-15, 15), (-0.05, 0.05)]
+                for q_num, val in enumerate(gp_bounds):
+                    if q_num == 1:
+                        suff = 'st'
+                    elif q_num == 2:
+                        suff = 'nd'
+                    elif q_num == 3:
+                        suff = 'rd'
+                    else:
+                        suff = 'th'
+                        
+                    flats = flat_samps[:,q_num]
+                    if round(min(flats), 3) < round(val[0], 3):
+                        print("The {:d}{:s} lower bound was breached, reaching a min. of {:.2f}".format(q_num, suff, min(flats)))
+
+                    diff_min = abs(min(flats) - val[0])
+                    min_val = max(val[0], min(flats) - 0.1*diff_min)
+                        
+                    if round(max(flats), 3) > round(val[1], 3):
+                        print("The {:d}{:s} upper bound was breached, reaching a max. of {:.2f}".format(q_num, suff, max(flats)))
+                    
+                    diff_max = abs(max(flats) - val[1])
+                    max_val = min(val[1], max(flats) + 0.1*diff_max)
+                        
+                    gp_bounds[q_num] = (min_val, max_val)
+                    
+                corner.corner(flat_samps, labels=gp_names, range=gp_bounds, 
                               color=best_colour)
                 if plot_dir is not None:
-                    plt.savefig(os.path.join(plot_dir, 'gp_corner_{}.png'.format(num)), bbox_inches='tight')
+                    plt.savefig(os.path.join(plot_dir, 'gp_corner_{}.png'.format(eignum)), bbox_inches='tight')
 
                 if show_plots:
                     plt.show()
 
         pred, pred_var = gp.predict(eigval, mjds_pred, return_var=True)
-        pred_res[num,:] = pred
-        pred_vars[num,:] = pred_var
+        pred_res[eignum,:] = pred
+        pred_vars[eignum,:] = pred_var
         
         # stop the loop after reaching the desired number of eigenvectors
-        if num == max_num:
+        if eignum == max_num:
             break
             
     # plot the results
@@ -2341,7 +2350,7 @@ def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset
         style = 'dark_background'
         cmap = cmr.chroma_r
         lc = 'w'
-        k_alpha = 0.4
+        k_alpha = 0.6
     else:
         #plt.style.use('default')
         style = 'default'
@@ -2444,15 +2453,16 @@ def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_re
     
     if bk_bgd:
         style = 'dark_background'
-        cmap = cmr.chroma_r
+        cmap = cmr.chroma
         lc = 'w'
+        if sub_mean:
+            cmap = cmr.iceburn
     else:
         style = 'default'
-        cmap = cmr.chroma
+        cmap = cmr.chroma_r
         lc = 'k'
-
-    if sub_mean:
-        cmap = cmr.iceburn
+        if sub_mean:
+            cmap = cmr.fusion_r
             
     with plt.style.context(style):
         plt.clf()
@@ -2523,6 +2533,8 @@ def init_thread(kern_len, _data, mjds, errs=None):
     global data
     data = _data
     variance = np.var(data)
+    {}
+    {}
     kernel = {}
     gp = {}
     if errs is not None:
@@ -2540,7 +2552,7 @@ def lnprob(p):
     if p[1] < np.log({:.1e}) or p[1] > np.log({:.1e}):
         return(-np.inf)
             
-    if np.any((-50 > p) + (p > 50)):
+    if np.any((-30 > p) + (p > 30)):
         return(-np.inf)
         
     # Update the kernel and compute the log-likelihood
@@ -2551,14 +2563,19 @@ def lnprob(p):
     if use_george:
         imp_mod = "george"
         kernel = 'variance * george.kernels.Matern52Kernel(kern_len)'
-        gp = "george.GP(kernel, np.mean(data), fit_mean=True, solver=george.HODLRSolver,"\
+        gp = "george.GP(kernel, np.mean(data), fit_mean=True, solver=george.HODLRSolver, "\
              +"white_noise=np.log(np.sqrt(variance)*0.8), fit_white_noise=True)"
+        term1 = ""
+        term2 = ""
     else:
         imp_mod = "celerite as cel"
-        kernel = "cel.terms.Matern32Term(np.log(1), np.log(kern_len)) + cel.terms.JitterTerm(np.log(np.sqrt(variance)))"
+        logr = "log_rho=(np.log({:.1e}), np.log({:.1e}))".format(prior_min, prior_max)
+        term1 = "term1 = cel.terms.Matern32Term(np.log(1), np.log(kern_len), bounds=dict(log_sigma=(-15, 15), {}))".format(logr) 
+        term2 = "term2 = cel.terms.JitterTerm(np.log(np.sqrt(variance)), bounds=dict(log_sigma=(-15, 15)))"
+        kernel = "term1 + term2"
         gp = "cel.GP(kernel, np.mean(data), fit_mean=True)"
     
     with open('gp_init_threads.py', 'w') as f:
-        f.write(std_text.format(imp_mod, kernel, gp, prior_min, prior_max))
+        f.write(std_text.format(imp_mod, term1, term2, kernel, gp, prior_min, prior_max))
         
     

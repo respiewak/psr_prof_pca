@@ -10,7 +10,9 @@ def init_thread(kern_len, _data, mjds, errs=None):
     global data
     data = _data
     variance = np.var(data)
-    kernel = cel.terms.Matern32Term(np.log(1), np.log(kern_len)) + cel.terms.JitterTerm(np.log(np.sqrt(variance)))
+    term1 = cel.terms.Matern32Term(np.log(1), np.log(kern_len), bounds=dict(log_sigma=(-15, 15), log_rho=(np.log(8.2e+01), np.log(2.5e+03))))
+    term2 = cel.terms.JitterTerm(np.log(np.sqrt(variance)), bounds=dict(log_sigma=(-15, 15)))
+    kernel = term1 + term2
     gp = cel.GP(kernel, np.mean(data), fit_mean=True)
     if errs is not None:
         gp.compute(mjds, errs)
@@ -27,7 +29,7 @@ def lnprob(p):
     if p[1] < np.log(8.2e+01) or p[1] > np.log(2.5e+03):
         return(-np.inf)
             
-    if np.any((-50 > p) + (p > 50)):
+    if np.any((-30 > p) + (p > 30)):
         return(-np.inf)
         
     # Update the kernel and compute the log-likelihood
