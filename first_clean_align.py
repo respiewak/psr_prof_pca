@@ -89,6 +89,7 @@ for psr in psr_list:
             if os.path.exists(pdv_file.split('.pdv')[0]+'_new.pdv'):
                 pdv_file = pdv_file.split('.pdv')[0]+'_new.pdv'
 
+            logger.info("Reading data from "+pdv_file)
             raw_data, raw_mjds, raw_tobs = read_pdv(pdv_file, logg=logger)
             if raw_data is None:
                 logger.info('Moving to next dataset')
@@ -219,6 +220,16 @@ for psr in psr_list:
             if os.path.exists(npz_file):
                 os.remove(npz_file)
         else:
-            np.savez(npz_file, **var_dict)
+            out_file = os.path.join(data_dir, '{}_gps_fin.npz'.format(psr))
+            old_dict = {}
+            if os.path.exists(out_file):
+                with np.load(out_file) as f:
+                    for key in f.keys():
+                        if key not in var_dict.keys():
+                            old_dict[key] = f[key]
+                        else:
+                            print("Replacing an older value for "+key)
+                
+            np.savez(out_file, **var_dict, **old_dict)
     
  
