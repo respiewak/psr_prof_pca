@@ -3,6 +3,7 @@
 
 import os, sys
 import numpy as np
+import importlib as implib
 from matplotlib import pyplot as plt
 from matplotlib import colors as col
 from sklearn.preprocessing import StandardScaler
@@ -2042,7 +2043,23 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=300, prior_max=5000,
     
     """
     
-    import gp_init_threads as th_init
+    if 'gp_init_threads' in sys.modules:
+        del sys.modules['gp_init_threads']
+        if 'th_init' in locals() or 'th_init' in globals():
+            del th_init
+            
+        if verb:
+            print("Deleted the 'th_init' module")
+    
+    try:
+        implib.invalidate_caches()
+        th_init = implib.reload(th_init)
+        if verb:
+            print("Reloaded 'th_init'")
+    except NameError:
+        import gp_init_threads as th_init
+        if verb:
+            print("Normal import of 'th_init'")
     
     # Define functions for fitting using globals (gp and data)
     # Define the objective function (negative log-likelihood in this case)
@@ -2284,13 +2301,13 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
                         print("The {:d}{:s} lower bound was breached, reaching a min. of {:.2f}".format(q_num, suff, min(flats)))
 
                     diff_min = abs(min(flats) - val[0])
-                    min_val = max(val[0], min(flats) - 0.1*diff_min)
+                    min_val = min(max(val[0], min(flats) - 0.1*diff_min), np.median(flats))
                         
                     if round(max(flats), 2) > round(val[1]+0.005, 2):
                         print("The {:d}{:s} upper bound was breached, reaching a max. of {:.2f}".format(q_num, suff, max(flats)))
                     
                     diff_max = abs(max(flats) - val[1])
-                    max_val = min(val[1], max(flats) + 0.1*diff_max)
+                    max_val = max(min(val[1], max(flats) + 0.1*diff_max), np.median(flats))
                         
                     gp_bounds[q_num] = (min_val, max_val)
                     
@@ -2306,6 +2323,8 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
         pred_res[eignum,:] = pred
         pred_vars[eignum,:] = pred_var
         
+        del gp
+        
         # stop the loop after reaching the desired number of eigenvectors
         if eignum == max_num:
             break
@@ -2317,7 +2336,7 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
             
         plot_eig_gp(data[:,:max_num+1], mjds, errs, pred_res[:max_num+1,:], pred_vars[:max_num+1,:],
                     mjds_pred, mjds_off, savename=gp_plotname, bk_bgd=bk_bgd, show=show_plots)
-        
+                
     return(pred_res, pred_vars, mjds_pred+mjds_off)
 
 
@@ -2549,7 +2568,7 @@ def lnprob(p):
     global gp
     global data
     # Trivial uniform prior on length scale
-    if p[1] < np.log({:.3e}) or p[1] > np.log({:.3e}):
+    if p[1] < np.log({:.2f}) or p[1] > np.log({:.2f}):
         return(-np.inf)
             
     if np.any((-30 > p) + (p > 30)):
@@ -2569,7 +2588,7 @@ def lnprob(p):
         term2 = ""
     else:
         imp_mod = "celerite as cel"
-        logr = "log_rho=(np.log({:.1e}), np.log({:.1e}))".format(prior_min, prior_max)
+        logr = "log_rho=(np.log({:.2f}), np.log({:.2f}))".format(prior_min, prior_max)
         term1 = "term1 = cel.terms.Matern32Term(np.log(1), np.log(kern_len), bounds=dict(log_sigma=(-15, 15), {}))".format(logr) 
         term2 = "term2 = cel.terms.JitterTerm(np.log(np.sqrt(variance)), bounds=dict(log_sigma=(-15, 15)))"
         kernel = "term1 + term2"
