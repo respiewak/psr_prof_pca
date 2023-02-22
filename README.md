@@ -133,3 +133,11 @@ Run
 and follow the steps outlined. As with the previous steps, most plots are also saved to the `<data_dir>/plots` directory. 
 
 
+### Testing for correlations between eigenvalues and nudot values
+* * *
+
+This is still work in progress, but there exists a notebook with some rough steps. Run 
+> `jupyter [lab|notebook] fourth_nudot_correlations.ipynb`
+
+and follow the steps. 
+

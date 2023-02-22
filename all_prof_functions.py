@@ -2047,19 +2047,12 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=300, prior_max=5000,
         del sys.modules['gp_init_threads']
         if 'th_init' in locals() or 'th_init' in globals():
             del th_init
-            
-        if verb:
-            print("Deleted the 'th_init' module")
     
     try:
         implib.invalidate_caches()
         th_init = implib.reload(th_init)
-        if verb:
-            print("Reloaded 'th_init'")
     except NameError:
         import gp_init_threads as th_init
-        if verb:
-            print("Normal import of 'th_init'")
     
     # Define functions for fitting using globals (gp and data)
     # Define the objective function (negative log-likelihood in this case)
@@ -2183,7 +2176,8 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=300, prior_max=5000,
 def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200, prior_max=2000,
                 burn_chain=300, prod_chain=5000, num_walkers=100,
                 plot_gps=True, mcmc=True, multi=True, plot_chains=False, plot_corner=False,
-                gp_plotname=None, bk_bgd=False, verb=True, plot_dir=None, show_plots=True):
+                gp_plotname=None, bk_bgd=False, verb=True, plot_dir=None, show_plots=True,
+                mjds_pred=None):
     """
     Input:
         data - 2D array of floats, shape of (nobs, ncomp)
@@ -2206,6 +2200,7 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
         verb - bool, whether to be verbose with diagnostic information
         plot_dir - str or NoneType
         show_plots - bool
+        mjds_pred - 1D array of floats or NoneType
         
     Output:
         2D array of floats, shape of (max_num+1, nobs) or (ncomp, nobs) if max_num is `None`
@@ -2222,7 +2217,11 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
         print("Subtracting {} from MJDs (will return true MJD values)".format(mjds_off))
         
     mjds = mjds_in - mjds_off
-    mjds_pred = np.arange(np.ceil(mjds.max()+1))
+    if mjds_pred is None:
+        mjds_pred = np.arange(np.ceil(mjds.max()+1))
+    else:
+        mjds_pred -= mjds_off
+        
     # initialise arrays
     if max_num is None:
         pred_res = np.zeros((data.shape[1], len(mjds_pred)))
@@ -2334,44 +2333,51 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
         if max_num is None:
             max_num = data.shape[1]
             
-        plot_eig_gp(data[:,:max_num+1], mjds, errs, pred_res[:max_num+1,:], pred_vars[:max_num+1,:],
-                    mjds_pred, mjds_off, savename=gp_plotname, bk_bgd=bk_bgd, show=show_plots)
+        plot_eig_gp(mjds_pred, pred_res[:max_num+1,:], pred_vars[:max_num+1,:],
+                    mjds_off, mjds, data[:,:max_num+1], errs, savename=gp_plotname,
+                    bk_bgd=bk_bgd, show=show_plots)
                 
     return(pred_res, pred_vars, mjds_pred+mjds_off)
 
 
-def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset=None,
-                savename=None, bk_bgd=False, show=False):
+def plot_eig_gp(mjds_pred, pred_res, pred_var, mjd_offset=None,
+                mjds=None, data=None, data_errs=None,
+                savename=None, bk_bgd=False, show=False,
+                nudot_mjds=None, nudot_vals=None, nudot_vars=None, eig_nums=None):
     """
     Make a set of panels (numbering `ncomp_short`) of eigenvalues per component and fitted GPs
     Each panel contains the actual eigenvalues (with uncertainties) for each observation and
     the median GP with an error region
     
     Input:
-       data - 2D array of floats, shape of (nobs, ncomp), representing the real eigenvalues
-       mjds - 1D array of floats, length of nobs, representing the real observation MJDs
-       data_errs - 2D array of floats, shape of (nobs, ncomp), representing the uncertainties
-           on the real eigenvalues
+       mjds_pred - 1D array of floats, length of nobs_long, representing a uniform set of
+           MJDs spanning the same range as `mjds` (nobs_long >= nobs)
        pred_res - 2D array of floats, shape of (ncomp_short, nobs_long), representing the median
            GPs per eigenvector analysed (ncomp_short <= ncomp)
        pred_var - 2D array of floats, shape of (ncomp_short, nobs_long), representing the
            uncertainties on the GPs per eigenvector analysed
-       mjds_pred - 1D array of floats, length of nobs_long, representing a uniform set of
-           MJDs spanning the same range as `mjds` (nobs_long >= nobs)
-       mjd_offset - float or NoneType, the zero-point that was subtracted from the real MJDs
+       mjds - 1D array of floats, length of nobs, representing the real observation MJDs
+       data - 2D array of floats, shape of (nobs, ncomp), representing the real eigenvalues
+       data_errs - 2D array of floats, shape of (nobs, ncomp), representing the uncertainties
+           on the real eigenvalues
+        mjd_offset - float or NoneType, the zero-point that was subtracted from the real MJDs
        savename - str or NoneType, the file name for saving the plot (or `None` to not save it)
        bk_bgd - bool, whether to use a dark background for the plot
+       nudot_mjds - 
+       nudot_vals - 
+       nudot_vars - 
+       eig_nums - 
     
     """
     
+    #plt.rcParams['text.usetex'] = True
+    
     if bk_bgd:
-        #plt.style.use('dark_background')
         style = 'dark_background'
         cmap = cmr.chroma_r
         lc = 'w'
         k_alpha = 0.6
     else:
-        #plt.style.use('default')
         style = 'default'
         cmap = cmr.chroma
         lc = 'k'
@@ -2387,8 +2393,33 @@ def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset
     with plt.style.context(style):
         fig = plt.figure(num=1)
         fig.set_size_inches(6, 4)
-        fig.suptitle("GP results for relevant eigenvalues", fontsize=14)
+        title_text = "GP results for {} eigenvalues{}"
+        if nudot_vals is not None:
+            adj = "correlated"
+            mod = " and $\dot \\nu$"
+        else:
+            adj = "relevant"
+            mod = ""
+            
+        fig.suptitle(title_text.format(adj, mod), fontsize=14)
+        if data is None:
+            plot_data = False
+        else:
+            plot_data = True
 
+        if data is None:
+            data = np.zeros(pred_res.T.shape)
+            mjds = np.zeros(len(mjds_pred))
+
+        if data_errs is None:
+            d_errs = np.zeros(data.shape)
+        elif data_errs is not None:
+            d_errs = data_errs
+
+        num_panels = 1 if len(pred_res.shape) == 1 else pred_res.shape[0]
+        if nudot_vals is not None:
+            num_panels += 1
+            
         if len(pred_res.shape) > 1:
             fig.set_size_inches(6, 8)
             # plot multiple eigenvalues in separate panels
@@ -2401,42 +2432,59 @@ def plot_eig_gp(data, mjds, data_errs, pred_res, pred_var, mjds_pred, mjd_offset
             #frac = 0.5
             #h1 = (0.87 - sep)/(1 + frac)
             #h2 = h1*frac
-            h = (0.87 - (sep*(pred_res.shape[0]-1)))/pred_res.shape[0] # height
+            h = (0.87 - (sep*(num_panels-1)))/num_panels # height
             #b1 = b2 + h + sep
-            axes_list = np.array([None for a in range(pred_res.shape[0])])
+            axes_list = np.array([None for a in range(num_panels)])
         
-            if data_errs is None:
-                d_errs = np.zeros(data.shape)
-            else:
-                d_errs = data_errs
-
-            for num, preds, predv, eigv, eiger in zip(np.arange(pred_res.shape[0]), np.flip(pred_res, axis=0), np.flip(pred_var, axis=0),
-                                                      np.flip(data, axis=1).T, np.flip(d_errs, axis=1).T):
-                if num == 0:
+            num_ar = np.arange(num_panels) if nudot_vals is None else np.arange(num_panels-1)
+            for pan_num, preds, predv, eigv, eiger in zip(num_ar, np.flip(pred_res, axis=0), np.flip(pred_var, axis=0),
+                                                          np.flip(data, axis=1).T, np.flip(d_errs, axis=1).T):
+                if pan_num == 0:
                     ax = fig.add_axes((l, b, w, h))
                     ax.set_xlabel(xlab, fontsize=12)
                 else:
                     ax1 = axes_list[0]
-                    ax = fig.add_axes((l, b + num*h + num*sep, w, h), sharex=ax1)
+                    ax = fig.add_axes((l, b + pan_num*h + pan_num*sep, w, h), sharex=ax1)
                 
                 ax.set_ylabel('Eigenvalue', fontsize=12)
-                axes_list[num] = ax
+                axes_list[pan_num] = ax
                 ax.fill_between(mjds_pred, preds - np.sqrt(predv), preds + np.sqrt(predv),
                                  color=lc, alpha=k_alpha, zorder=10)
                 ax.plot(mjds_pred, preds, lc, lw=1.5, zorder=20)
-                if data_errs is not None:
-                    ax.errorbar(mjds, eigv, yerr=eiger, fmt='k.', mfc=c3, mec=c3, ecolor=c3, ms=8, zorder=1)
-                else:
-                    ax.plot(mjds, eigv, 'k.', color=c3, ms=8, zorder=1)
+                if plot_data:
+                    if data_errs is not None:
+                        ax.errorbar(mjds, eigv, yerr=eiger, fmt='k.', mfc=c3, mec=c3, ecolor=c3, ms=8, zorder=1)
+                    else:
+                        ax.plot(mjds, eigv, 'k.', color=c3, ms=8, zorder=1)
+                        
+                if eig_nums is not None:
+                    ylims = ax.get_ylim()
+                    mod_val = (ylims[1] - ylims[0])/10
+                    ax.set_ylim(ylims[0], ylims[1]+mod_val)
+                    ax.text(0.035, 0.88, "$N_{{eig}}$ = {}".format(np.flip(eig_nums)[pan_num]), transform=ax.transAxes)
+                   
+            if nudot_vals is not None:
+                pan_num += 1
+                ax1 = axes_list[0]
+                ax = fig.add_axes((l, b + pan_num*h + pan_num*sep, w, h), sharex=ax1)
+                ax.set_ylabel('$\dot \\nu$ (Hz/s)', fontsize=12)
+                ax.fill_between(nudot_mjds, nudot_vals - np.sqrt(nudot_vars), nudot_vals + np.sqrt(nudot_vars),
+                                color=lc, alpha=k_alpha, zorder=10)
+                ax.plot(nudot_mjds, nudot_vals, lc, lw=1.5, zorder=20)
+                        
+        elif num_panels > 1:
+            # make two panels but only one is eig GP
+            pass
         
         else:
             plt.fill_between(mjds_pred, pred_res - np.sqrt(pred_var), pred_res + np.sqrt(pred_var),
                              color=lc, alpha=k_alpha)
             plt.plot(mjds_pred, pred_res, lc, lw=1.5)
-            if data_errs is not None:
-                plt.errorbar(mjds, data, yerr=d_errs, fmt='k.', mfc=c3, mec=c3, ecolor=c3, ms=8, zorder=1)
-            else:
-                plt.plot(mjds, data, 'k.', color=c3, ms=8, zorder=1)
+            if plot_data:
+                if data_errs is not None:
+                    plt.errorbar(mjds, data, yerr=d_errs, fmt='k.', mfc=c3, mec=c3, ecolor=c3, ms=8, zorder=1)
+                else:
+                    plt.plot(mjds, data, 'k.', color=c3, ms=8, zorder=1)
         
             plt.ylabel('Eigenvalue', fontsize=12)
             plt.xlabel(xlab, fontsize=12)
