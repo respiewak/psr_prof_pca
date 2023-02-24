@@ -13,6 +13,7 @@ These scripts require several python packages, those included in standard instal
 * scipy
 * multiprocessing
 * george
+* celerite
 * emcee
 * corner
 * cmasher
@@ -127,17 +128,23 @@ At this time, there is a redimentary ''binning'' of the eigenvalues at the end o
 ### Gaussian Process on the eigenvalues
 * * *
 
+The third part of the analysis uses Gaussian Processes, optimised using Markov-Chain Monte Carlo, to model the eigenvalues and allow for the creation of a smooth dataset without gaps. The GP is implemented using `celerite`, using a Matern-3/2 kernel (plus a Jitter/white noise term), and the parameter optimisation is performed by `emcee` with flat priors for all parameters. The length scale of the kernel is restricted to values determined from the dataset: the lower bound is the 97th percentile of the distribution of lags between observation epochs, and the upper bound is half the total timespan. 
+
 Run
 > `jupyter [lab|notebook] third_eigenvalue_gps.ipynb`
 
 and follow the steps outlined. As with the previous steps, most plots are also saved to the `<data_dir>/plots` directory. 
 
+The output of this notebook is a `.npz` file containing an array of MJDs with roughly 1 day cadence spanning the input observation range, and the associated predicted values (and variances) from the GPs for each selected eigenvector. An array of MJDs, e.g., those used for nudot GPs, can be given to the main function of this notebook, or one will be generated. 
+
 
 ### Testing for correlations between eigenvalues and nudot values
 * * *
 
+The final step of this analysis is to test for correlations between the smoothed eigenvalues and nudot values. This is most easily done when the MJDs from the nudot dataset are given directly to the eigenvalue GP function in the previous step. (At present, the analysis does not work if the nudot MJDs are not used for the eigenvalue GP predictions.) 
+
 This is still work in progress, but there exists a notebook with some rough steps. Run 
 > `jupyter [lab|notebook] fourth_nudot_correlations.ipynb`
 
-and follow the steps. 
+and follow the steps. The correlation values will be printed (and saved to a text file in future), and a plot is made of the nudot values and eigenvalues for which the correlation coefficient is significant (`|rho| > 0.3`). 
 
