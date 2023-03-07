@@ -743,7 +743,7 @@ def read_bad_mjd_file(filename):
                 n = 0
             else:
                 try:
-                    mjd_list.append(float(sline))
+                    mjd_list.append(round(float(sline), 7))
                 except TypeError:
                     raise(TypeError("Found a non-float: {}".format(sline)))
 
@@ -1155,12 +1155,18 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
         raise(RuntimeError("Not enough data"))
             
     if bad_mjds is not None and type(bad_mjds) is float:
-        a_wo_bl = a_wo_bl[:,a_mjds_new != bad_mjds]
-        a_mjds_new = a_mjds_new[a_mjds_new != bad_mjds]
+        lim = np.array([round(A, 6) for A in a_mjds_new]) != round(bad_mjds, 6)
+        a_wo_bl = a_wo_bl[:,lim]
+        a_mjds_new = a_mjds_new[lim]
     elif bad_mjds is not None and type(bad_mjds) in [list, np.ndarray]:
+        a_mjds_sh = np.array([round(A, 6) for A in a_mjds_new])
         for bad_one in np.unique(sorted(bad_mjds)):
-            a_wo_bl = a_wo_bl[:,a_mjds_new != bad_one]
-            a_mjds_new = a_mjds_new[a_mjds_new != bad_one]
+            lim = a_mjds_sh != round(bad_one, 6)
+            a_wo_bl = a_wo_bl[:,lim]
+            a_mjds_new = a_mjds_new[lim]
+            a_mjds_sh = a_mjds_sh[lim]
+            
+        del a_mjds_sh
         
     # find the brightest observation to use as a template for alignment
     a_brightest = find_bright(a_wo_bl)

@@ -72,6 +72,7 @@ do_snrs = args['do_snrs']
 
 bad_mjd_file = args['bad_mjd_file']
 bms_dict = read_bad_mjd_file(bad_mjd_file)
+logger.info("The keys for `bms_dict` are: {}".format(bms_dict.keys()))
 
 for psr in psr_list:
     for freq in frq_list:
@@ -110,6 +111,7 @@ for psr in psr_list:
                         +os.path.join(plots_dir, '{}_bk.png'.format(desc)))
 
             if not DESC in bms_dict:
+                logger.info("No bad mjds in the given file for {}".format(DESC))
                 bms_dict[DESC] = None
 
             logger.info("Cleaning data without removing low S/N observations")
@@ -228,7 +230,10 @@ for psr in psr_list:
                         if key not in var_dict.keys():
                             old_dict[key] = f[key]
                         else:
-                            print("Replacing an older value for "+key)
+                            if logger:
+                                logger.info("Replacing an older value for "+key)
+                            else:
+                                print("Replacing an older value for "+key)
                 
             np.savez(out_file, **var_dict, **old_dict)
     
