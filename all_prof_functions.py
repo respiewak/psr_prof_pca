@@ -312,7 +312,7 @@ def removebaseline(data, outliers, logg=None):
 # for a 1D array of values `val`, define `lim` to exclude the highest values in `val` (iteratively), so the width of the pulse and S/N are:
 #width = float(max(len(val) - len(val[lim]), 1))
 #snr = np.abs(np.array([(n - val[lim].mean()) for n in val]).sum())/(sig*np.sqrt(width))
-def calc_snr(data, peak_bin=None):
+def calc_snr_old(data, peak_bin=None):
     """
     If the input data array is 2D, this function assumes the profiles are aligned (not strictly required)
     
@@ -369,7 +369,7 @@ def calc_snr(data, peak_bin=None):
             
     else:
         off_p, width = _find_off_pulse(profile, profile != profile[peak_bin])
-        result = np.abs(np.array([(n - profile[off_p].mean()) for n in profile]).sum())/(profile[off_p].std()*np.sqrt(width))
+        result = np.abs(np.sum(profile - profile[off_p].mean()))/(profile[off_p].std()*np.sqrt(width))
         
     return(result)
 
@@ -1208,6 +1208,27 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
         print("In total, removed {} observations, aligned remaining obs., and normalised according to on-pulse sum".format(nobs_in - a_aln_norm.shape[1]))
     
     return(a_aln_norm, a_temp_norm, a_mjds_new, a_tobs_new)
+
+
+def calc_snr(data, verb=False):
+    """
+    A simple function to loop over a 2D dataset using `find_eq_width_snr` to get the S/N
+    for each profile in the dataset
+    
+    Input:
+        data - 2D array of floats, shape of (nbin, nobs)
+        verb - bool, not currently implemented
+        
+    Output:
+        1D array of floats, length of `nobs`
+    
+    """
+    
+    snr_ar = np.zeros(data.shape[1])
+    for iobs, prof in enumerate(data):
+        _, snr_ar[iobs] = find_eq_width_snr(prof)
+        
+    return(snr_ar)
 
 
 def find_eq_width_snr(prof, verb=False, plot_style='dark_background'):
