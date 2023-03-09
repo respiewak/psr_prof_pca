@@ -34,13 +34,9 @@ import multiprocessing as mpr
 mpr.set_start_method('fork')
 import argparse as ap
 from all_prof_functions import (aligndata, smart_align, calc_snr, plot_joydivision, make_fake_obss,
-                                make_fake_profile, add_gauss, do_rem_aln, #check_null_prob,
+                                make_fake_profile, add_gauss, do_rem_aln,
                                 read_pdv, _find_off_pulse, err_eigval, find_eq_width_snr,
                                 get_gp, run_each_gp, plot_eig_gp, plot_recon_profs)
-try:
-    from all_prof_functions import check_null_prob
-except ImportError:
-    print("Cannot do nulling analysis")
     
 
 pars = ap.ArgumentParser(description='Test suite for the PCA+GP profile variation pipeline')
@@ -185,7 +181,8 @@ with plt.style.context(plot_style):
 # 
 # The profiles are aligned using a correlation between a template (the brightest individual profile) and each individual profile (`xcorr = np.correlate(template, obs, "full")`). After this process, a new template is generated (the average profile) and the process repeated, twice. (WIP: if a better template could be provided, some alignment issues with multi-peak profiles could be fixed.) 
 # 
-# Finally, the profiles are normalised by the sum of on-pulse bins (using the aforementioned iterative function to find the off-pulse region). 
+# Finally, the profiles are normalised by the sum of on-pulse bins (using the aforementioned iterative function to find the off-pulse region).
+#
 
 # run the fake data through the whole cleaning function
 fake_aligned, fake_template, fake_mjds_new, _ = do_rem_aln(fakedata, fake_mjds, fake_tobs, thrsh=1.75,
@@ -197,9 +194,10 @@ plot_joydivision(fake_aligned, 'test_aligned', savename=os.path.join(plot_dir, '
 # 
 # ### Caveats
 # 
-# PCA is sensitive to misalignment of profiles. Any misaligned profiles will result in one or more extraneous eigenvectors, skewing the analysis and producing outlier eigenvalues, which could cause the GP to fail. You should always check the waterfall plots for misaligned profiles, and then check the eigenvalue plots for significant outliers. The MJDs for any outliers can be given to the `do_rem_aln` function for removal. 
+# PCA is sensitive to misalignment of profiles. Any misaligned profiles will result in one or more extraneous eigenvectors, skewing the analysis and producing outlier eigenvalues, which could cause the GP to fail. You should always check the waterfall plots for misaligned profiles, and then check the eigenvalue plots for significant outliers. The MJDs for any outliers can be given to the `do_rem_aln` function for removal.
 # 
-# Unless your pulse profile is very wide, it is unwise to include the entire rotation in the PCA as it will look for patterns in the off-pulse which are not relevant to the analysis. Find the rough on-pulse region and make a bin-wise mask (array of booleans). If the profile has an interpulse, that region should be included as well, cutting out any off-pulse region between the MP and IP. 
+# Unless your pulse profile is very wide, it is unwise to include the entire rotation in the PCA as it will look for patterns in the off-pulse which are not relevant to the analysis. Find the rough on-pulse region and make a bin-wise mask (array of booleans). If the profile has an interpulse, that region should be included as well, cutting out any off-pulse region between the MP and IP.
+#
 
 lim, _ = _find_off_pulse(fake_template)
 test_nbin = len(fake_template)
@@ -242,6 +240,10 @@ test_bins = np.linspace(0, 1, num=fake_aligned.shape[0], endpoint=False)
 test_mask = np.logical_and(test_bins > off_min, test_bins < off_max)
 test_off = np.logical_or(test_bins[test_mask] < peak_min, test_bins[test_mask] > peak_max)
 
+# With the on- and off-pulse regions defined, you can now use the PCA class from scikit-learn to find the 30 most significant eigenvectors and associated eigenvalues. (You can change the maximum number of components retained, but 30 should work well for most cases.)
+
+# The test_pca object contains many useful attributes, such as the eigenvectors (test_pca.components_) and mean profile (test_pca.mean_), and the eigenvalues are returned to a separate variable by the .fit_transform() function. The shape of the test_comps_all numpy array is (N_obs, N_comp), and the shape of test_pca.components_ is (N_comp, N_bin), where N_comp in this case is 30, and N_bin is the number of bins remaining in the masked part of the profiles.
+
 # test the PCA stuff
 test_pca = PCA(n_components=30)
 test_comps_all = test_pca.fit_transform(fake_aligned[test_mask,:].T)
@@ -266,6 +268,8 @@ with plt.style.context(plot_style):
     #plt.show()
     plt.savefig(os.path.join(plot_dir, 'test_eigvecs.png'))
 
+# The uncertainties on the eigenvalues are very useful for identifying outliers, and for accurate GP results. The function to calculate these (using error propagation) requires the full (masked) dataset, the components found by PCA, and the portion of the masked region that is the off-pulse region (as seen above, some off-pulse is included for this reason).
+
 new_errs = err_eigval(fake_aligned[test_mask,:], test_pca.components_, test_off)
 
 with plt.style.context(plot_style):
@@ -281,8 +285,14 @@ with plt.style.context(plot_style):
     plt.savefig(os.path.join(plot_dir, 'eigvals_vs_mjd.png'))
 
 # ## Running the Gaussian Process with Markov Chain Monte Carlo
-# 
-# ###
+# The final step of the analysis (at this time) is to run GPs on the eigenvalues for the most significant components identified by PCA. This is done with the celerite package, using MCMC (implemented by emcee) to optimise the parameters.
+#
+# The kernel used in this analysis is the Matern-3/2, which only has the amplitude and length scale as independent variables. (There are also a constant and white noise term which will be optimised by the MCMC.) The bounds on the length scale can be derived from the input data: the minimum bound is set to the 99.5th percentile of the separation of observations (so that the GP will not latch onto inter-observation variations), and the maximum is set to half the observed timespan.
+#
+# The calculations inside celerite are performed in log-space, so the chains and distributions plotted for each component must be interpreted as such.
+#
+# Once the GPs have been run for your selected number of significant components (typically between 2 and 5), a plot will be made showing, for each component, the input eigenvalues over time overlaid with the predictions using the GP median values with uncertainties. This plot is valuable for determining if the GP has succeeded in modeling the eigenvalues for each component.
+#
 
 # plot the distribution of lags to ensure the minimum bound on the kernel length is appropriate
 with plt.style.context(plot_style):
@@ -306,34 +316,7 @@ pred_res, pred_vars, mjds_pred = run_each_gp(test_comps_all, fake_mjds_new, new_
                                              bk_bgd=use_bk_bgd, plot_dir=plot_dir, show_plots=False,
                                              gp_plotname=os.path.join(plot_dir, 'gp_eigs_res.png'))
 
+# Finally, once the GPs are completed and you have the predicted (smoothed) eigenvalues over time, you can reconstruct the profile variations by simply summing the products of the eigenvectors with their eigenvalues over time. While this plot does not show uncertainties on the variations, it is a visually appealing way to examine the profile variations.
+
 plot_recon_profs(test_pca.mean_, test_pca.components_, mjds_pred, pred_res, 'test', mjds_real=fake_mjds_new,
                  sub_mean=True, savename=os.path.join(plot_dir, 'recon_from_gps.png'), bk_bgd=use_bk_bgd)
-
-# ## Nulling Analysis
-#
-
-snrs = calc_snr(fake_aligned)
-with plt.style.context(plot_style):
-    plt.clf()
-    fig = plt.figure()
-    fig.set_size_inches(6, 5)
-    _ = plt.hist(snrs, bins=50)
-    plt.ylabel('Counts')
-    plt.xlabel('S/N')
-    #plt.show()
-    plt.savefig(os.path.join(plot_dir, 'snr_hist.png'))
-
-if 'check_null_prob' in globals():
-    null_prob = check_null_prob(fake_aligned, peak_bin=128, ip=False, on_min=None, onf_range=None, off_min=None)
-    with plt.style.context(plot_style):
-        plt.clf()
-        fig = plt.figure()
-        fig.set_size_inches(6, 5)
-        plt.plot(null_prob)
-        plt.ylabel('Fractional Probability')
-        plt.xlabel('Observation Number')
-        #plt.show()
-        plt.savefig(os.path.join(plot_dir, 'null_prob.png'))
-else:
-    print("Skipping the nulling probability analysis")
-

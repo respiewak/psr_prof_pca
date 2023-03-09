@@ -31,9 +31,9 @@ pars.add_argument('-f', '--frq_list', nargs='+', default=1400, type=int,
                   help="Frequency band(s) as they appear in the pdv file names (integers)")
 pars.add_argument('-b', '--be_list', nargs='+', default=['afb', 'dfb'],
                   help="Backend names/abbreviations as they appear in the pdv file names")
-pars.add_argument('-s', '--do_snrs', action='store_true',
-                  help="Whether to analyse S/N values and determine probability of nulling; "\
-                  "requires David Kaplan's nulling-pulsars code (WIP)")
+#pars.add_argument('-s', '--do_snrs', action='store_true',
+#                  help="Whether to analyse S/N values and determine probability of nulling; "\
+#                  "requires David Kaplan's nulling-pulsars code (WIP)")
 pars.add_argument('-d', '--data_dir', default='../profiles/',
                   help="Absolute or relative path to the directory containing profile data")
 pars.add_argument('-m', '--bad_mjd_file', default='bad_mjds_jbo.txt',
@@ -68,7 +68,7 @@ if not os.path.exists(plots_dir):
     os.chdir(data_dir)
     os.mkdir('plots')
     
-do_snrs = args['do_snrs']
+do_snrs = False #args['do_snrs']
 
 bad_mjd_file = args['bad_mjd_file']
 bms_dict = read_bad_mjd_file(bad_mjd_file)
