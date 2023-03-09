@@ -225,7 +225,7 @@ for psr in psr_list:
             out_file = os.path.join(data_dir, '{}_gps_fin.npz'.format(psr))
             old_dict = {}
             if os.path.exists(out_file):
-                with np.load(out_file) as f:
+                with np.load(out_file, allow_pickle=True) as f:
                     for key in f.keys():
                         if key not in var_dict.keys():
                             old_dict[key] = f[key]
