@@ -1146,6 +1146,24 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
     a_wo_bl, a_rp, a_mjds_new, a_rms, a_out, a_in = rem_base_outs(
         data_arr, mjds_arr, thrsh, wide=wide, logg=logg, cut_snr=cut_snr, quiet=quiet)
     
+    if bad_mjds is not None:
+        if type(bad_mjds) is float:
+            bad_mjds = np.array([bad_mjds])
+
+        lim = np.array([M not in bad_mjds for M in a_mjds_new])
+        a_wo_bl_new = a_wo_bl[:,lim]
+        a_mjds_new_new = a_mjds_new[lim]
+        
+        if np.all(a_wo_bl_new == a_wo_bl) or np.all(a_mjds_new_new == a_mjds_new):
+            raise(RuntimeError("Problem lies with applying the mask"))
+        else:
+            logg.info("{} MJDs were removed from the dataset, leaving {} epochs".format(len(a_mjds_new) - len(a_mjds_new_new), len(a_mjds_new_new)))
+            a_wo_bl = a_wo_bl_new
+            a_mjds_new = a_mjds_new_new
+            
+    if bad_mjds is not None and np.any(np.array([M in bad_mjds for M in a_mjds_new])):
+        raise(RuntimeError("Bad MJDs remain in the array"))
+                
     if a_wo_bl.shape[1] < 20:
         if logg is not None:
             logg.warning("Cuts have removed too many observations for the remaining to be useful")
@@ -1154,20 +1172,6 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
             
         raise(RuntimeError("Not enough data"))
             
-    if bad_mjds is not None and type(bad_mjds) is float:
-        lim = np.array([round(A, 6) for A in a_mjds_new]) != round(bad_mjds, 6)
-        a_wo_bl = a_wo_bl[:,lim]
-        a_mjds_new = a_mjds_new[lim]
-    elif bad_mjds is not None and type(bad_mjds) in [list, np.ndarray]:
-        a_mjds_sh = np.array([round(A, 6) for A in a_mjds_new])
-        for bad_one in np.unique(sorted(bad_mjds)):
-            lim = a_mjds_sh != round(bad_one, 6)
-            a_wo_bl = a_wo_bl[:,lim]
-            a_mjds_new = a_mjds_new[lim]
-            a_mjds_sh = a_mjds_sh[lim]
-            
-        del a_mjds_sh
-        
     # find the brightest observation to use as a template for alignment
     a_brightest = find_bright(a_wo_bl)
     a_aln, a_temp = aligndata(a_wo_bl, a_brightest)
@@ -1225,7 +1229,7 @@ def calc_snr(data, verb=False):
     """
     
     snr_ar = np.zeros(data.shape[1])
-    for iobs, prof in enumerate(data):
+    for iobs, prof in enumerate(data.T):
         _, snr_ar[iobs] = find_eq_width_snr(prof)
         
     return(snr_ar)
@@ -1850,6 +1854,7 @@ def err_eigval_off(profs, eigfuns):
 
 if 'nm' in globals():
     # a better function using David's nulling_mcmc code
+    # github.com/dlakaplan/nulling-pulsars
     def check_null_prob(data, peak_bin=100, ip=False, on_min=None, onf_range=None, off_min=None):
         """
         Get a decent probability of an observation being a null using Bayesian statistics

@@ -110,26 +110,25 @@ for psr in psr_list:
             logger.info("Saved the joy division plot of raw data in "\
                         +os.path.join(plots_dir, '{}_bk.png'.format(desc)))
 
+            plt.close('all')
             if not DESC in bms_dict:
                 logger.info("No bad mjds in the given file for {}".format(DESC))
                 bms_dict[DESC] = None
 
-            logger.info("Cleaning data without removing low S/N observations")
-            try:
-                var_dict[BE+'_aligned'], var_dict[BE+'_template'], var_dict[BE+'_mjds_null'],\
-                    var_dict[BE+'_tobs'] = do_rem_aln(raw_data, raw_mjds, raw_tobs,
-                                                      bad_mjds=bms_dict[DESC], thrsh=1.25, logg=logger)
-            except RuntimeError:
-                logger.error('Proceeding to next dataset')
-                var_dict[BE+'_aligned'] = None
-                var_dict[BE+'_template'] = None
-                var_dict[BE+'_mjds_new'] = None
-                var_dict[BE] = True
-                continue
-
-            plt.close('all')
-
             if do_snrs and 'check_null_prob' in globals():
+                logger.info("Cleaning data without removing low S/N observations")
+                try:
+                    var_dict[BE+'_aligned'], var_dict[BE+'_template'], var_dict[BE+'_mjds_null'],\
+                        var_dict[BE+'_tobs'] = do_rem_aln(raw_data, raw_mjds, raw_tobs,
+                                                          bad_mjds=bms_dict[DESC], thrsh=1.25, logg=logger)
+                except RuntimeError:
+                    logger.error('Proceeding to next dataset')
+                    var_dict[BE+'_aligned'] = None
+                    var_dict[BE+'_template'] = None
+                    var_dict[BE+'_mjds_new'] = None
+                    var_dict[BE] = True
+                    continue
+
                 proceed = True
                 logger.info("Doing S/N and nulling stuff")
                 snrs = calc_snr(var_dict[BE+'_aligned'])
@@ -222,10 +221,10 @@ for psr in psr_list:
             if os.path.exists(npz_file):
                 os.remove(npz_file)
         else:
-            out_file = os.path.join(data_dir, '{}_gps_fin.npz'.format(psr))
+            logger.info("Saving the data arrays to {}".format(npz_file))
             old_dict = {}
-            if os.path.exists(out_file):
-                with np.load(out_file, allow_pickle=True) as f:
+            if os.path.exists(npz_file):
+                with np.load(npz_file, allow_pickle=True) as f:
                     for key in f.keys():
                         if key not in var_dict.keys():
                             old_dict[key] = f[key]
@@ -235,6 +234,6 @@ for psr in psr_list:
                             else:
                                 print("Replacing an older value for "+key)
                 
-            np.savez(out_file, **var_dict, **old_dict)
+            np.savez(npz_file, **var_dict, **old_dict)
     
  

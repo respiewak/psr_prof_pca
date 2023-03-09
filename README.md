@@ -18,8 +18,6 @@ These scripts require several python packages, those included in standard instal
 * corner
 * cmasher
 
-In addition, scripts from David Kaplan's [pulse nulling code](github.com/dlakaplan/nulling-pulsars) are required for the optional nulling analysis.
-
 Also, the `jupyter` package is required to utilise the notebooks. Executable versions of all notebooks are included, but the interactive nature of notebooks is better for optimising the later parts of the analysis. 
 
 
