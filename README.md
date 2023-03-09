@@ -144,5 +144,11 @@ The final step of this analysis is to test for correlations between the smoothed
 This is still work in progress, but there exists a notebook with some rough steps. Run 
 > `jupyter [lab|notebook] fourth_nudot_correlations.ipynb`
 
-and follow the steps. The correlation values will be printed (and saved to a text file in future), and a plot is made of the nudot values and eigenvalues for which the correlation coefficient is significant (`|rho| > 0.3`). 
+and follow the steps. The correlation values will be printed and saved to a text file, and a plot is made of the nudot values and eigenvalues for which the correlation coefficient is significant (`|rho| > 0.3`). 
+
+
+#### Checking for periodicity
+* * *
+
+Lastly, we use the `astropy.timeseries.LombScargle` function to test for periodicity in the nudot values. This is the last part of the `fourth_nudot_correlations.ipynb` notebook and produces a plot of the resulting periodogram. The frequency of the maximum point in the periodogram is printed (and converted to a period in days). 
 
