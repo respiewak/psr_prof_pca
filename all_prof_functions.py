@@ -2251,7 +2251,7 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
     mjds = mjds_in - mjds_off
     if mjds_pred is None:
         mjds_pred = np.arange(np.ceil(mjds.max()+1))
-    else:
+    elif mjds_pred.min() > 30000:
         mjds_pred -= mjds_off
         
     # initialise arrays
@@ -2350,6 +2350,11 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
                 if show_plots:
                     plt.show()
 
+        if mjds_pred.min() < mjds.min()+100-mjds_off:
+            mjds_pred += mjds_off
+        elif mjds_pred.max() > mjds.max()-100+mjds_off:
+            mjds_pred -= mjds_off
+            
         pred, pred_var = gp.predict(eigval, mjds_pred, return_var=True)
         pred_res[eignum,:] = pred
         pred_vars[eignum,:] = pred_var
@@ -2369,7 +2374,10 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
                     mjds_off, mjds, data[:,:max_num+1], errs, savename=gp_plotname,
                     bk_bgd=bk_bgd, show=show_plots)
                 
-    return(pred_res, pred_vars, mjds_pred+mjds_off)
+    if mjds_pred.min() < 20000:
+        mjds_pred += mjds_off
+        
+    return(pred_res, pred_vars, mjds_pred)
 
 
 def plot_eig_gp(mjds_pred, pred_res, pred_var, mjd_offset=None,
@@ -2500,8 +2508,10 @@ def plot_eig_gp(mjds_pred, pred_res, pred_var, mjd_offset=None,
                 ax1 = axes_list[0]
                 ax = fig.add_axes((l, b + pan_num*h + pan_num*sep, w, h), sharex=ax1)
                 ax.set_ylabel('$\dot \\nu$ (Hz/s)', fontsize=12)
-                ax.fill_between(nudot_mjds, nudot_vals - np.sqrt(nudot_vars), nudot_vals + np.sqrt(nudot_vars),
-                                color=lc, alpha=k_alpha, zorder=10)
+                if nudot_vars is not None:
+                    ax.fill_between(nudot_mjds, nudot_vals - np.sqrt(nudot_vars), nudot_vals + np.sqrt(nudot_vars),
+                                    color=lc, alpha=k_alpha, zorder=10)
+                    
                 ax.plot(nudot_mjds, nudot_vals, lc, lw=1.5, zorder=20)
                         
         elif num_panels > 1:

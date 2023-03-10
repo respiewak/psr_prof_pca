@@ -16,10 +16,10 @@ from all_prof_functions import (do_rem_aln, aligndata, smart_align, removebaseli
                                 get_rms_bline, _gauss_2, find_bright, findbrightestprofile,
                                 read_pdv, plot_joydivision, setup_log, read_bad_mjd_file)
 
-try:
-    from all_prof_functions import check_null_prob
-except OSError:
-    print("Cannot load nulling module; skipping that part of the analysis")
+#try:
+#    from all_prof_functions import check_null_prob
+#except OSError:
+#    print("Cannot load nulling module; skipping that part of the analysis")
 
 plt.rcParams["figure.figsize"] = (6, 10)
 
@@ -206,6 +206,17 @@ for psr in psr_list:
                 var_dict[BE+'_mjds_new'] = None
                 var_dict[BE] = True
                 continue
+                
+            if np.any(sorted(var_dict[BE+'_mjds_new']) != var_dict[BE+'_mjds_new']):
+                logger.info("MJDs are not sorted!!")
+                sort_inds = np.argsort(var_dict[BE+'_mjds_new'])
+                var_dict[BE+'_mjds_new'] = var_dict[BE+'_mjds_new'][sort_inds]
+                BE_aligned_new = var_dict[BE+'_aligned'][:,sort_inds]
+                if BE_aligned_new.shape == var_dict[BE+'_aligned'].shape:
+                    var_dict[BE+'_aligned'] = BE_aligned_new
+        
+                if np.any(sorted(var_dict[BE+'_mjds_new']) != var_dict[BE+'_mjds_new']):
+                    logger.warning("Sorting failed!!!!")
                 
             var_dict[BE+'_aligned'] = np.nan_to_num(var_dict[BE+'_aligned'])
 
