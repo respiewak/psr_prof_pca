@@ -1,14 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
-
-
-get_ipython().run_line_magic('load_ext', 'autoreload')
-
-
-# In[2]:
-
 
 import os, sys
 import numpy as np
@@ -17,19 +9,35 @@ import cmasher as cmr
 import corner    
 import multiprocessing as mpr
 mpr.set_start_method('fork')
-#import gp_init_threads as th_init
 from all_prof_functions import (run_each_gp, plot_recon_profs)
-
-get_ipython().run_line_magic('aimport', '-os -np -plt -cmr -mpr -corner')
-get_ipython().run_line_magic('autoreload', '2')
-
-
-# In[3]:
 
 
 # Set up some plotting stuff
 plt.rc('savefig', bbox='tight')
-use_bk_bgd = True #### Change this to use white backgrounds for plots  #####
+
+# The following section contains variables describing the dataset and where the data are located
+pars = ap.ArgumentParser(description='The third step')
+pars.add_argument('psr_list', nargs='+', help="Pulsar names")
+pars.add_argument('-f', '--frq_list', nargs='+', default=1400, type=int,
+                  help="Frequency band(s) as they appear in the file names (integers)")
+pars.add_argument('-b', '--be_list', nargs='+', default=['afb', 'dfb'],
+                  help="Backend names/abbreviations")
+pars.add_argument('-d', '--data_dir', default='../profiles/',
+                  help="Absolute or relative path to the directory containing profile data")
+pars.add_argument('-l', '--log_name', default='prof_gps',
+                  help="Name for the log file")
+pars.add_argument('-k', '--use_bk_bgd', action='store_true',
+                  help='Use a dark background for all plots')
+pars.add_argument('-m', '--max_num', default=3, type=int, help='Max. number of eigen components')
+pars.add_argument('-w', '--num_walkers', default=200, type=int,
+                  help="Number of walkers for MCMC")
+pars.add_argument('-cb', '--burn_chain', default=300, type=int,
+                  help="Number of steps for burn-in for MCMC")
+pars.add_argument('-cp', '--prod_chain', default=3000, type=int,
+                  help="Number of steps for production chain for MCMC")
+args = vars(pars.parse_args())
+
+use_bk_bgd = args['use_bk_bgd']
 if use_bk_bgd:
     plot_style = 'dark_background'
     # The CMasher package provides lots of lovely colour maps; chroma is a handy sequential cmap
@@ -51,291 +59,155 @@ else:
     c5 = cmap(0.78)
     c6 = cmap(0.915)
 
-
-# The following cell contains variables describing the dataset and where the data are located. Change them as needed. 
-
-# In[4]:
-
-
-data_dir = '/home/s86932rs/research/nudot_stuff/'
+#data_dir = '/home/s86932rs/research/nudot_stuff/'
+data_dir = args['data_dir']
+log_name = args['log_name']
+if len(log_name.split('.')) == 1:
+    log_name += '.log'
+    
+logger = setup_log(os.path.join(data_dir, log_name))
 plots_dir = os.path.join(data_dir, 'plots')
-psr = 'B1828-11'
-freq = 1400
-be = 'afb'
+if not os.path.exists(plots_dir):
+    logger.warning("Creating directory for the output plots: "+plots_dir)
+    os.chdir(data_dir)
+    os.mkdir('plots')
 
+#psr = 'B1828-11'
+psr_list = args['psr_list']
+if type(psr_list) is str:
+    psr_list = [psr_list]
 
-# In[5]:
+#freq = 1400
+frq_list = args['frq_list']
+if type(frq_list) is int:
+    frq_list = [frq_list]
 
-
-be = be.lower()
-BE = be.upper()
-npz_file = os.path.join(data_dir, psr+'_{}_eigs.npz'.format(freq))
-if not os.path.exists(npz_file):
-    raise(RuntimeError("File containing eigenvalues does not exist"))
-
-nudot_file = os.path.join(data_dir, psr+"_nudot_gp.txt") # contains columns of MJD, nudot, uncertainty
-
-
-# In[6]:
-
-
-exist_AFB = True
-exist_DFB = True
-with np.load(npz_file, allow_pickle=True) as d:
-    if 'AFB_errs' in d.keys():
-        AFB_errs = d['AFB_errs']
-        AFB_mean = d['AFB_mean']
-        AFB_eigval = d['AFB_values']
-        AFB_eigvec = d['AFB_vectors']
-        AFB_eigval_bin = d['AFB_bin_vals']
-        AFB_mjds = d['AFB_mjds']
-        AFB_mjds_bin = d['AFB_bin_mjds']
-        AFB_rms = d['AFB_rms']
-    else:
-        exist_AFB = False
-        
-    if 'DFB_errs' in d.keys():
-        DFB_errs = d['DFB_errs']
-        DFB_mean = d['DFB_mean']
-        DFB_eigval = d['DFB_values']
-        DFB_eigvec = d['DFB_vectors']
-        DFB_eigval_bin = d['DFB_bin_vals']
-        DFB_mjds = d['DFB_mjds']
-        DFB_mjds_bin = d['DFB_bin_mjds']
-        DFB_rms = d['DFB_rms']
-    else:
-        exist_DFB = False
-        
-    val_bin_len = d['val_bin_len']
-    val_bin_overlap = d['val_bin_lap']
-
-print("Binning was done with a length scale of {}.".format(val_bin_len))
-if exist_AFB:
-    print("The shape of the AFB eigval array is {}.".format(AFB_eigval.shape))
-    if len(AFB_errs) == AFB_eigval.shape[0] and len(AFB_mean) == AFB_eigvec.shape[1] and AFB_eigval.shape[1] == AFB_eigvec.shape[0] \
-        and AFB_eigval.shape[0] == len(AFB_mjds) and AFB_eigval.shape[0] == len(AFB_rms) and AFB_eigval_bin.shape[0] == len(AFB_mjds_bin):
-        print("All AFB shapes and lengths agree")
-    else:
-        print("WARNING: Lengths and shapes for AFB do not agree!")
+#be = 'afb'
+be_list = args[BE+'_list']
+if type(be_list) is str:
+    be_list = [be_list]
     
-if exist_DFB:
-    print("The shape of the DFB eigval array is {}.".format(DFB_eigval.shape))
-    if len(DFB_errs) == DFB_eigval.shape[0] and len(DFB_mean) == DFB_eigvec.shape[1] and DFB_eigval.shape[1] == DFB_eigvec.shape[0] \
-        and DFB_eigval.shape[0] == len(DFB_mjds) and DFB_eigval.shape[0] == len(DFB_rms) and DFB_eigval_bin.shape[0] == len(DFB_mjds_bin):
-        print("All DFB shapes and lengths agree")
-    else:
-        print("WARNING: Lengths and shapes for DFB do not agree!")
+BE_list = [A.upper() for A in be_list]
+be_list = [A.lower() for A in BE_list]
 
-
-# In[7]:
-
-
-if exist_DFB and True:
-    with plt.style.context(plot_style):
-        plt.clf()
-        fig = plt.figure(figsize=(20, 5))
-        fig.suptitle("{}, DFB, {}, eigenvalues".format(psr, freq))
-        ax1 = fig.gca()
-        ax1.errorbar(DFB_mjds, DFB_eigval[:,3], yerr=DFB_errs[:,3], fmt='o', ecolor=c4, mec=c4, mfc=c4)
-        ax1.errorbar(DFB_mjds, DFB_eigval[:,2], yerr=DFB_errs[:,2], fmt='v', ecolor=c3, mec=c3, mfc=c3)
-        ax1.errorbar(DFB_mjds, DFB_eigval[:,1], yerr=DFB_errs[:,1], fmt='s', ecolor=c2, mec=c2, mfc=c2)
-        ax1.errorbar(DFB_mjds, DFB_eigval[:,0], yerr=DFB_errs[:,0], fmt='*', ecolor=c1, mec=c1, mfc=c1, ms=9)
-        ax1.set_xlabel('MJD (days)', fontsize=12)
-        ax1.set_ylabel('Value', fontsize=12)
-
-
-# In[8]:
-
-
-with plt.style.context(plot_style):
-    plt.clf()
-    if exist_DFB:
-        _, bins, _ = plt.hist(DFB_mjds[1:] - DFB_mjds[:-1], bins=50, color=c2, label='DFB')
-    else:
-        bins = 50
-    
-    if exist_AFB:
-        _ = plt.hist(AFB_mjds[1:] - AFB_mjds[:-1], bins=bins, alpha=0.6, color=c4, label='AFB')
-    
-    if exist_AFB or exist_DFB:
-        plt.xlabel("Separation between observations (MJD)")
-        plt.legend()
-        plt.show()
-
-
-# In[9]:
-
-
-# read in the MJDs from the nudot GP file to make alignment (for finding correlations) easier
-if not os.path.exists(nudot_file):
-    print("WARNING: File containing nu-dot GPs does not exist")
-    AFB_mjds_pred = None
-    DFB_mjds_pred = None
-else:
-    nudot_mjds = np.loadtxt(nudot_file, unpack=True, usecols=(0,))
-    avg_sep = np.mean(nudot_mjds[1:] - nudot_mjds[:-1]) # separation between nudot MJDs
-    if exist_AFB:
-        nudot_min = min(nudot_mjds)
-        nudot_max = max(nudot_mjds)
-        afb_min = min(AFB_mjds)
-        afb_max = max(AFB_mjds)
-        if nudot_min > afb_min:
-            num_pre = int(np.ceil((nudot_min - afb_min)/avg_sep)) # number of points needed to fill
-            new_min = nudot_min - avg_sep*num_pre # shift the minimum to use an integer
-            pre_mjds = np.linspace(new_min, nudot_min, num_pre, endpoint=False)
-            nudot_mjds = np.append(pre_mjds, nudot_mjds)
-        
-        if nudot_max < afb_max:
-            num_post = int(np.ceil((afb_max - nudot_max)/avg_sep)) # number of points needed to fill
-            new_max = nudot_max + avg_sep*num_post # shift the maximum to use an integer
-            post_mjds = np.linspace(nudot_max, new_max, num_post, endpoint=False)
-            nudot_mjds = np.append(nudot_mjds, post_mjds)
-
-        AFB_mjds_pred = nudot_mjds[nudot_mjds <= max(AFB_mjds)+0.1]
-        AFB_mjds_pred = np.unique(AFB_mjds_pred) # this shouldn't be necessary... why is it?
-        
-    if exist_DFB:
-        nudot_min = min(nudot_mjds)
-        nudot_max = max(nudot_mjds)
-        dfb_min = min(DFB_mjds)
-        dfb_max = max(DFB_mjds)
-        if nudot_min > dfb_min:
-            num_pre = int(np.ceil((nudot_min - dfb_min)/avg_sep)) # number of points needed to fill
-            new_min = nudot_min - avg_sep*num_pre # shift the minimum to use an integer
-            pre_mjds = np.linspace(new_min, nudot_min, num_pre, endpoint=False)
-            nudot_mjds = np.append(pre_mjds, nudot_mjds)
-    
-        if nudot_max < dfb_max:
-            num_post = int(np.ceil((dfb_max - nudot_max)/avg_sep)) # number of points needed to fill
-            new_max = nudot_max + avg_sep*num_post # shift the maximum to use an integer
-            post_mjds = np.linspace(nudot_max, new_max, num_post, endpoint=False)
-            nudot_mjds = np.append(nudot_mjds, post_mjds)
-
-        DFB_mjds_pred = nudot_mjds[nudot_mjds >= min(DFB_mjds)-0.1]
-        DFB_mjds_pred = np.unique(DFB_mjds_pred) # this shouldn't be necessary... why is it?
-    
-    print("The MJDs for the GP prediction span from {:.5f} to {:.5f} with an average separation of {:.3f}".format(min(nudot_mjds), max(nudot_mjds), avg_sep))
-    if np.any(nudot_mjds != sorted(nudot_mjds)):
-        print("Nudot MJDs are not sorted!!")
-    
-
-
-# In[10]:
-
-
-read_old = False
-gp_file = os.path.join(data_dir, '{}_gps_fin.npz'.format(psr))
-if read_old and os.path.exists(gp_file):
-    with np.load(gp_file, allow_pickle=True) as d:
-        if exist_DFB and 'DFB_mjds_pred' in d.keys():
-            DFB_mjds_pred = d['DFB_mjds_pred']
-            DFB_pred_vars = d['DFB_vars_pred']
-            DFB_pred_res = d['DFB_res_pred']
-        else:
-            print("No DFB arrays in npz file")
+for psr in psr_list:
+    for freq in frq_list:
+        var_dict = {}
+        be_exists = []
+        for BE, be in zip(BE_list, be_list):
+            desc = "{}_{}_{}".format(psr, be, freq)
+            DESC = "{}_{}_{}".format(psr, BE, freq)
+            logger.info('Working on the {} dataset'.format(DESC))
             
-        if exist_AFB and 'AFB_mjds_pred' in d.keys():
-            AFB_mjds_pred = d['AFB_mjds_pred']
-            AFB_pred_vars = d['AFB_vars_pred']
-            AFB_pred_res = d['AFB_res_pred']
-        else:
-            print("No AFB arrays in npz file")
-            
-if exist_DFB and 'DFB_pred_res' not in locals():
-    print("Running GP for DFB data")
-    lags = DFB_mjds[1:] - DFB_mjds[:-1]
-    pmin = np.percentile(lags, 97.5)
-    print("The minimum length scale for DFB is {:.2f}".format(pmin))
-    mjd_range = DFB_mjds[-1] - DFB_mjds[0]
-    kern_len = max(pmin*2, mjd_range/10)
+            npz_file = os.path.join(data_dir, psr+'_{}_eigs.npz'.format(freq))
+            if not os.path.exists(npz_file):
+                raise(RuntimeError("File containing eigenvalues does not exist"))
 
-    DFB_pred_res, DFB_pred_vars, DFB_mjds_pred = run_each_gp(DFB_eigval, DFB_mjds, DFB_errs, kern_len=kern_len, max_num=3, # adjust this number as necessary
-                                                             prior_min=pmin, prior_max=0.5*mjd_range, mjds_pred=DFB_mjds_pred,
-                                                             burn_chain=300, prod_chain=3000, num_walkers=200, # these values can be adjusted but should work
-                                                             plot_chains=True, plot_corner=True, plot_gps=True, mcmc=True, multi=True,
-                                                             verb=True, bk_bgd=use_bk_bgd, gp_plotname=os.path.join(plots_dir, psr+'_dfb_{}_gp_preds.png'.format(freq)))
+            nudot_file = os.path.join(data_dir, psr+"_nudot_gp.txt") # contains columns of MJD, nudot, uncertainty
 
-
-# In[11]:
-
-
-if os.path.exists('gp_init_threads.py'):
-   os.remove('gp_init_threads.py')
-   
-if exist_AFB and 'AFB_pred_res' not in locals():
-   print("Running GP for AFB data")
-   a_lags = AFB_mjds[1:] - AFB_mjds[:-1]
-   a_pmin = np.percentile(a_lags, 97.5)
-   print("The minimum length scale for AFB is {:.2f}".format(a_pmin))
-   a_mjd_range = AFB_mjds[-1] - AFB_mjds[0]
-   a_kern_len = max(a_pmin*2, a_mjd_range/10)
-
-   AFB_pred_res, AFB_pred_vars, AFB_mjds_pred = run_each_gp(AFB_eigval, AFB_mjds, AFB_errs, kern_len=a_kern_len, max_num=4, # adjust this number as necessary
-                                                            prior_min=a_pmin, prior_max=0.5*a_mjd_range, mjds_pred=AFB_mjds_pred,
-                                                            burn_chain=300, prod_chain=3000, num_walkers=200, # these values can be adjusted but should work for most datasets
-                                                            plot_chains=True, plot_corner=True, plot_gps=True, mcmc=True, multi=True,
-                                                            verb=True, bk_bgd=use_bk_bgd, gp_plotname=os.path.join(plots_dir, psr+'_afb_{}_gp_preds.png'.format(freq)))
-
-
-# In[12]:
-
-
-if exist_DFB:
-    plot_recon_profs(DFB_mean, DFB_eigvec, DFB_mjds_pred, DFB_pred_res, psr, mjds_real=DFB_mjds, bk_bgd=use_bk_bgd,
-                     sub_mean=True, savename=os.path.join(plots_dir, psr+'_dfb_recon_wfall.png'))
-    
-
-
-# In[13]:
-
-
-if exist_AFB:
-    plot_recon_profs(AFB_mean, AFB_eigvec, AFB_mjds_pred, AFB_pred_res, psr, mjds_real=AFB_mjds, bk_bgd=use_bk_bgd,
-                     sub_mean=True, savename=os.path.join(plots_dir, psr+'_afb_recon_wfall.png'))
-    
-
-
-# We want to save the arrays containing GP predicted values, so the following cells will check if an older file exists (which may contain arrays for different datasets), read that into a separate dictionary, and write both dictionaries to the '.npz' file. 
-
-# In[14]:
-
-
-var_dict = {}
-if exist_DFB:
-    var_dict['DFB_mjds_pred'] = DFB_mjds_pred
-    var_dict['DFB_res_pred'] = DFB_pred_res
-    var_dict['DFB_vars_pred'] = DFB_pred_vars
-    
-if exist_AFB:
-    var_dict['AFB_mjds_pred'] = AFB_mjds_pred
-    var_dict['AFB_res_pred'] = AFB_pred_res
-    var_dict['AFB_vars_pred'] = AFB_pred_vars
-
-
-# In[15]:
-
-
-out_file = os.path.join(data_dir, '{}_gps_fin.npz'.format(psr))
-old_dict = {}
-if os.path.exists(out_file):
-    with np.load(out_file, allow_pickle=True) as f:
-        for key in f.keys():
-            if key not in var_dict.keys():
-                old_dict[key] = f[key]
-            else:
-                print("Replacing an older value for "+key)
+            with np.load(npz_file, allow_pickle=True) as d:
+                if BE+'_errs' in d.keys():
+                    BE_errs = d[BE+'_errs']
+                    BE_mean = d[BE+'_mean']
+                    BE_eigval = d[BE+'_values']
+                    BE_eigvec = d[BE+'_vectors']
+                    BE_mjds = d[BE+'_mjds']
+                    BE_rms = d[BE+'_rms']
+                else:
+                    logger.warning("No data to load for "+DESC)
+                    continue
                 
-np.savez(out_file, **var_dict, **old_dict)
+            logger.info("The shape of the {} eigval array is {}.".format(BE, BE_eigval.shape))
+            if len(BE_errs) == BE_eigval.shape[0] and len(BE_mean) == BE_eigvec.shape[1] and BE_eigval.shape[1] == BE_eigvec.shape[0] \
+                and BE_eigval.shape[0] == len(BE_mjds) and BE_eigval.shape[0] == len(BE_rms) and BE_eigval_bin.shape[0] == len(BE_mjds_bin):
+                logger.info("All {} shapes and lengths agree".format(BE))
+            else:
+                logger.warning("Lengths and shapes for BE do not agree!".format(BE))
 
+            with plt.style.context(plot_style):
+                plt.clf()
+                _, bins, _ = plt.hist(BE_mjds[1:] - BE_mjds[:-1], bins=50, color=c2)
+                plt.xlabel("Separation between observations (MJD)")
+                plt.savefig(os.path.join(plots_dir, desc+"_lag_hist.png"), bbox_inches='tight')
+                #plt.show()
 
-# In[ ]:
+            # read in the MJDs from the nudot GP file to make alignment (for finding correlations) easier
+            if not os.path.exists(nudot_file):
+                logger.warning("File containing nu-dot GPs does not exist")
+                BE_mjds_pred = None
+                BE_mjds_pred = None
+            else:
+                nudot_mjds = np.loadtxt(nudot_file, unpack=True, usecols=(0,))
+                avg_sep = np.mean(nudot_mjds[1:] - nudot_mjds[:-1]) # separation between nudot MJDs
+                nudot_min = min(nudot_mjds)
+                nudot_max = max(nudot_mjds)
+                BE_min = min(BE_mjds)
+                BE_max = max(BE_mjds)
+                if nudot_min > BE_min:
+                    num_pre = int(np.ceil((nudot_min - BE_min)/avg_sep)) # number of points needed to fill
+                    new_min = nudot_min - avg_sep*num_pre # shift the minimum to use an integer
+                    pre_mjds = np.linspace(new_min, nudot_min, num_pre, endpoint=False)
+                    nudot_mjds = np.append(pre_mjds, nudot_mjds)
+        
+                if nudot_max < BE_max:
+                    num_post = int(np.ceil((BE_max - nudot_max)/avg_sep)) # number of points needed to fill
+                    new_max = nudot_max + avg_sep*num_post # shift the maximum to use an integer
+                    post_mjds = np.linspace(nudot_max, new_max, num_post, endpoint=False)
+                    nudot_mjds = np.append(nudot_mjds, post_mjds)
 
+                BE_mjds_pred = nudot_mjds[nudot_mjds <= max(BE_mjds)+0.1]
+                BE_mjds_pred = np.unique(BE_mjds_pred) # this shouldn't be necessary... why is it?
+        
+                logger.info("The MJDs for the GP prediction span from {:.5f} to {:.5f} with an average separation of {:.3f}"
+                            .format(min(nudot_mjds), max(nudot_mjds), avg_sep))
+                if np.any(nudot_mjds != sorted(nudot_mjds)):
+                    logger.warning("Nudot MJDs are not sorted!!")
 
+            read_old = False # make this not hard-coded
+            gp_file = os.path.join(data_dir, '{}_{}_gps_fin.npz'.format(psr, freq))
+            if read_old and os.path.exists(gp_file):
+                with np.load(gp_file, allow_pickle=True) as d:
+                    if BE+'_mjds_pred' in d.keys():
+                        BE_mjds_pred = d[BE+'_mjds_pred']
+                        BE_pred_vars = d[BE+'_vars_pred']
+                        BE_pred_res = d[BE+'_res_pred']
+                    else:
+                        logger.info("No {} arrays in npz file".format(DESC))
+                        
+            if BE+'_pred_res' not in locals():
+                logger.info("Running GP for {} data".format(BE))
+                lags = BE_mjds[1:] - BE_mjds[:-1]
+                pmin = np.percentile(lags, 97.5)
+                logger.info("The minimum length scale for {} is {:.2f}".format(BE, pmin))
+                mjd_range = BE_mjds[-1] - BE_mjds[0]
+                kern_len = max(pmin*2, mjd_range/10)
 
+                BE_pred_res, BE_pred_vars, BE_mjds_pred = run_each_gp(
+                    BE_eigval, BE_mjds, BE_errs, kern_len=kern_len, max_num=args['max_num'],
+                    prior_min=pmin, prior_max=0.5*mjd_range, mjds_pred=BE_mjds_pred,
+                    burn_chain=args['burn_chain'], prod_chain=args['prod_chain'], num_walkers=args['num_walkers'],
+                    plot_chains=True, plot_corner=True, plot_gps=True, mcmc=True, multi=True,
+                    verb=True, bk_bgd=use_bk_bgd, show_plots=False, plot_dir=plots_dir, descrpn=desc,
+                    gp_plotname=os.path.join(plots_dir, desc+'_gp_preds.png'), logg=logger)
 
+            plot_recon_profs(BE_mean, BE_eigvec, BE_mjds_pred, BE_pred_res, psr, mjds_real=BE_mjds, bk_bgd=use_bk_bgd,
+                             sub_mean=True, savename=os.path.join(plots_dir, desc+'_recon_wfall.png'))
+            logger.info("Plot of reconstructed profile saved to "+os.path.join(plots_dir, desc+'_recon_wfall.png'))
 
-# In[ ]:
+            # We want to save the arrays containing GP predicted values, so the following cells will check if an older file exists (which may contain arrays for different datasets), read that into a separate dictionary, and write both dictionaries to the '.npz' file. 
+            var_dict[BE+'_mjds_pred'] = BE_mjds_pred
+            var_dict[BE+'_res_pred'] = BE_pred_res
+            var_dict[BE+'_vars_pred'] = BE_pred_vars
 
-
-
-
+        # after looping over all given backends, write out data for each frequency and pulsar combo
+        out_file = os.path.join(data_dir, '{}_{}_gps_fin.npz'.format(psr, freq))
+        old_dict = {}
+        if os.path.exists(out_file):
+            with np.load(out_file, allow_pickle=True) as f:
+                for key in f.keys():
+                    if key not in var_dict.keys():
+                        old_dict[key] = f[key]
+                    else:
+                        logger.info("Replacing an older value for "+key)
+                
+        np.savez(out_file, **var_dict, **old_dict)

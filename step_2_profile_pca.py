@@ -32,10 +32,10 @@ pars.add_argument('psr_list', nargs='+', help="Pulsar names")
 pars.add_argument('-f', '--frq_list', nargs='+', default=1400, type=int,
                   help="Frequency band(s) as they appear in the file names (integers)")
 pars.add_argument('-b', '--be_list', nargs='+', default=['afb', 'dfb'],
-                  help="Backend names/abbreviations as they appear in the file names")
+                  help="Backend names/abbreviations")
 pars.add_argument('-d', '--data_dir', default='../profiles/',
                   help="Absolute or relative path to the directory containing profile data")
-pars.add_argument('-l', '--log_name', default='prof_analysis',
+pars.add_argument('-l', '--log_name', default='prof_pca',
                   help="Name for the log file")
 pars.add_argument('-k', '--use_bk_bgd', action='store_true',
                   help='Use a dark background for all plots')
@@ -88,18 +88,23 @@ if type(frq_list) is int:
 
 #be = 'afb'
 be_list = args['be_list']
+if type(be_list) is str:
+    be_list = [be_list]
+
 BE_list = [A.upper() for A in be_list]
 be_list = [A.lower() for A in BE_list]
 
 for psr in psr_list:
     for freq in frq_list:
         var_dict = {}
+        be_exists = []
         for BE, be in zip(BE_list, be_list):
             desc = "{}_{}_{}".format(psr, be, freq)
             DESC = "{}_{}_{}".format(psr, BE, freq)
+            logger.info('Working on the {} dataset'.format(DESC))
 
             # read data from `step_1_clean_align`
-            # files contain (BE_aligned, BE_mjds_new, BE_tobs, BE_temp, BE_null_prob, BE_mjds_null)
+            # files contain (BE_aligned, BE_mjds_new, BE_tobs, BE_template, BE_null_prob, BE_mjds_null)
             npz_file = os.path.join(data_dir, '{}_{}_arrs.npz'.format(psr, freq))
             with np.load(npz_file, allow_pickle=True) as d:
                 if BE not in d.keys() and BE+'_aligned' in d.keys():
@@ -118,19 +123,18 @@ for psr in psr_list:
             
                     if BE+'_tobs' in d.keys():
                         BE_tobs = d[BE+'_tobs']
-            
-                    if BE+'_nulling' not in d.keys() and BE+'_null_prob' in d.keys():
-                        BE_null_prob = d[BE+'_null_prob']
-                        BE_null_mjds = d[BE+'_mjds_null']
-                        
+                                    
                 else:
                     logger.warning("There are no {} data to analyse".format(DESC))
                     continue
 
-            logger.info("The number of AFB observations is {}, with {} bins, for a shape of {}.".format(len(BE_mjds_new), len(BE_temp), BE_aligned.shape))
+            logger.info("The number of {} observations is {}, with {} bins, for a shape of {}.".format(BE, len(BE_mjds_new), len(BE_template), BE_aligned.shape))
             if len(BE_mjds_new) < 100:
                 logger.warning("This dataset is too small for final purpose; skipping")
+                be_exists.append(False)
                 continue
+            else:
+                be_exists.append(True)
 
             # this should no longer be necessary
             if np.any(sorted(BE_mjds_new) != BE_mjds_new):
@@ -146,12 +150,12 @@ for psr in psr_list:
         
             # Mike's alignment function
             #plt.plot(BE_aligned[:,100])   
-            BE_aligned = psrcelery.data.align_and_scale(BE_aligned.T, BE_temp, nharm='auto').T
+            BE_aligned = psrcelery.data.align_and_scale(BE_aligned.T, BE_template, nharm='auto').T
             #plt.plot(BE_aligned[:,100])   
             #plt.show()
 
             BE_offrms = np.std(BE_aligned[400:,:], axis=0)
-            BE_aligned = (BE_aligned.T - BE_temp).T/BE_offrms
+            BE_aligned = (BE_aligned.T - BE_template).T/BE_offrms
             #plt.plot(BE_aligned[:,100])   
             #plt.show()
             plt.imshow(BE_aligned.T, aspect='auto')
@@ -159,8 +163,8 @@ for psr in psr_list:
 
             # Try to set the phase cuts automatically
             if exist_DFB:
-                temp = BE_temp
-                nbin = len(BE_temp)
+                temp = BE_template
+                nbin = len(BE_template)
     
             lim, _ = _find_off_pulse(temp)
             phase = np.linspace(0, 1, nbin)
@@ -183,8 +187,8 @@ for psr in psr_list:
                 fig.set_size_inches(14, 4)
 
                 plt.title("{}, {}, {}, template".format(psr, BE, freq))
-                BE_nbin = len(BE_temp)
-                plt.plot(np.linspace(0, 1, BE_nbin), BE_temp, color=c2)
+                BE_nbin = len(BE_template)
+                plt.plot(np.linspace(0, 1, BE_nbin), BE_template, color=c2)
 
                 ylims = plt.ylim()
                 plt.vlines([off_min, peak_min, peak_max, off_max], ylims[0], ylims[1], linestyle='dashed', colors='grey')
@@ -357,7 +361,7 @@ for psr in psr_list:
             var_dict[BE+'_rms'] = BE_rms
 
         out_file = os.path.join(data_dir, '{}_{}_eigs.npz'.format(psr, freq))
-        if exist_AFB or exist_DFB:
+        if np.any(np.array(be_exists)):
             old_dict = {}
             if os.path.exists(out_file):
                 with np.load(out_file, allow_pickle=True) as f:

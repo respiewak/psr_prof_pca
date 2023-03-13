@@ -2052,7 +2052,7 @@ def get_gp(data, mjds, kern_len, errs=None, prior_min=200, prior_max=2000,
 
 
 def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=300, prior_max=5000,
-               bchain=300, pchain=2000, nwalkers=100, multi=False, verb=False):
+               bchain=300, pchain=2000, nwalkers=100, multi=False, verb=False, logg=None):
     """
     Use celerite to model a Gaussian Process that is fit using emcee
     
@@ -2068,6 +2068,7 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=300, prior_max=5000,
         nwalkers - int
         multi - a boolean indicating whether to use multiprocessing
         verb - bool, whether to be verbose with diagnostic information
+        logg - logging object
 
     Output:
         a celerite.GP object with the best parameters after maximising the log likelihood
@@ -2118,13 +2119,15 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=300, prior_max=5000,
         gp.set_parameter_vector(p)
         return(-gp.grad_log_likelihood(data, quiet=True))
     
-    def do_sampling(gp, pool, func, nwalkers=100, burn_chain=300, prod_chain=2000, use_errs=False, verb=False):
+    def do_sampling(gp, pool, func, nwalkers=100, burn_chain=300, prod_chain=2000, use_errs=False, verb=False, logg=None):
         ndim = len(gp)            
         sampler = emcee.EnsembleSampler(nwalkers, ndim, func, pool=pool)
     
         # Initialize the walkers
         p0 = gp.get_parameter_vector() + 0.5*np.random.randn(nwalkers, ndim)
-        if verb:
+        if logg is not None:
+            logg.info("Running burn-in")
+        elif verb:
             print("Running burn-in")
             
         s = sampler.run_mcmc(p0, burn_chain, progress=verb)
@@ -2133,14 +2136,18 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=300, prior_max=5000,
         
         samp0 = samp0[np.argmax(lp)] + 0.1*np.random.randn(nwalkers, ndim)
         sampler.reset()
-        if verb:
+        if logg is not None:
+            logg.info("Running second burn-in")
+        elif verb:
             print("Running second burn-in")
             
         s = sampler.run_mcmc(p0, burn_chain, progress=verb)
         samp0 = s[0]
         sampler.reset()
 
-        if verb:
+        if logg is not None:
+            logg.info("Running production chain")
+        elif verb:
             print("Running production chain")
             
         sampler.run_mcmc(samp0, prod_chain, progress=verb)
@@ -2164,27 +2171,35 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=300, prior_max=5000,
     else:
         gp.compute(mjds)
         
-    if verb:
+    if logg is not None:
+        logg.info("The initial parameter vector is {}".format(gp.get_parameter_vector()))
+    elif verb:
         print("The initial parameter vector is", gp.get_parameter_vector())
     
     # Set up the sampler
     if multi:
         proc_count = mpr.cpu_count() - 1
         with mpr.Pool(proc_count, initializer=th_init.init_thread, initargs=(kern_len, data, mjds, errs)) as pool:
-            sampler, ndim = do_sampling(gp, pool, th_init.lnprob, nwalkers, bchain, pchain, use_errs, verb)
+            sampler, ndim = do_sampling(gp, pool, th_init.lnprob, nwalkers, bchain, pchain, use_errs, verb, logg)
                 
     else:
-        sampler, ndim = do_sampling(gp, None, logprob, nwalkers, bchain, pchain, use_errs, verb)
+        sampler, ndim = do_sampling(gp, None, logprob, nwalkers, bchain, pchain, use_errs, verb, logg)
         
     # find the burn-in time
     try:
         tau_a = sampler.get_autocorr_time(quiet=True)
-        if verb:
+        if logg is not None:
+            logg.info("The array of autocorrelation times is {}".format(tau_a))
+        elif verb:
             print("The array of autocorrelation times is", tau_a)
                 
         lim = np.array([np.isfinite(A) for A in tau_a])
         if not np.any(lim):
-            print("Invalid autocorrelation times; using default of 50")
+            if logg is not None:
+                logg.warning("Invalid autocorrelation times; using default of 50")
+            else:
+                print("Invalid autocorrelation times; using default of 50")
+                
             tau = 50
         else:
             tau = np.mean(tau_a[lim])
@@ -2208,8 +2223,8 @@ def get_gp_cel(data, mjds, kern_len, errs=None, prior_min=300, prior_max=5000,
 def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200, prior_max=2000,
                 burn_chain=300, prod_chain=5000, num_walkers=100,
                 plot_gps=True, mcmc=True, multi=True, plot_chains=False, plot_corner=False,
-                gp_plotname=None, bk_bgd=False, verb=True, plot_dir=None, show_plots=True,
-                mjds_pred=None):
+                gp_plotname=None, bk_bgd=False, verb=True, logg=None, plot_dir=None, show_plots=True,
+                mjds_pred=None, descrpn=''):
     """
     Input:
         data - 2D array of floats, shape of (nobs, ncomp)
@@ -2230,9 +2245,11 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
         gp_plotname - str or NoneType, file name to use for the plot of resulting GPs
         bk_bgd - bool, whether to use a dark background for the plots
         verb - bool, whether to be verbose with diagnostic information
+        logg - logging object
         plot_dir - str or NoneType
         show_plots - bool
         mjds_pred - 1D array of floats or NoneType
+        descrpn - str, a description string to append to all output file names (plots)
         
     Output:
         2D array of floats, shape of (max_num+1, nobs) or (ncomp, nobs) if max_num is `None`
@@ -2243,10 +2260,15 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
     
     write_gp_init_threads(prior_min, prior_max, use_george=not(mcmc))
     
+    if descrpn != '' and descrpn[-1] != '_':
+        descrpn += '_'
+    
     # subtract the min. of the `mjds`
     mjds_off = int(np.floor(mjds_in.min()))
-    if verb:
-        print("Subtracting {} from MJDs (will return true MJD values)".format(mjds_off))
+    if logg is not None:
+        logg.info("Subtracting {} from MJDs (will return true MJD values)".format(mjds_off))
+    elif verb:
+         print("Subtracting {} from MJDs (will return true MJD values)".format(mjds_off))
         
     mjds = mjds_in - mjds_off
     if mjds_pred is None:
@@ -2272,11 +2294,11 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
         if not mcmc: #keeping this for now
             gp, flat_samps = get_gp(eigval, mjds, kern_len, val_errs, prior_min, prior_max,
                                     bchain=burn_chain, pchain=prod_chain,
-                                    nwalkers=num_walkers, mcmc=mcmc, multi=multi, verb=verb)
+                                    nwalkers=num_walkers, mcmc=mcmc, multi=multi, verb=verb, logg=logg)
         else:
             gp, flat_samps = get_gp_cel(eigval, mjds, kern_len, val_errs, prior_min, prior_max,
                                         bchain=burn_chain, pchain=prod_chain,
-                                        nwalkers=num_walkers, multi=multi, verb=verb)
+                                        nwalkers=num_walkers, multi=multi, verb=verb, logg=logg)
         
         #print(gp.get_parameter_dict())
         if plot_gps or plot_chains or plot_corner:
@@ -2303,7 +2325,9 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
                 ax.set_xlim(xlims)
                 ax.set_ylim(ylims)
                 if plot_dir is not None:
-                    plt.savefig(os.path.join(plot_dir, 'gp_chain_{}.png'.format(num)), bbox_inches='tight')
+                    plt.savefig(os.path.join(plot_dir, descrpn+'gp_chain_{}.png'.format(eignum)), bbox_inches='tight')
+                    if logg is not None:
+                        logg.info("GP chain {} plot saved to {}".format(eignum, os.path.join(plot_dir, descrpn+'gp_chain_{}.png'.format(eignum))))
             
                 if show_plots:
                     plt.show()
@@ -2313,7 +2337,11 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
                 plt.clf()
                 gp_names = gp.get_parameter_names()
                 gp_bounds = gp.get_parameter_bounds()
-                print("The bounds returned by the attribute are", gp_bounds)
+                if logg is not None:
+                    logg.info("The bounds returned by the attribute are {}".format(gp_bounds))
+                elif verb:
+                    print("The bounds returned by the attribute are", gp_bounds)
+                    
                 #gp_bounds = [(-11.5, -9.5), (-10, -8), (4, 12)]
                 #gp_bounds[1] = (np.log(prior_min), np.log(prior_max))
                 gp_bounds = [(-15, 15), (np.log(prior_min), np.log(prior_max)), (-15, 15), (-0.05, 0.05)]
@@ -2329,13 +2357,19 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
                         
                     flats = flat_samps[:,q_num]
                     if round(min(flats), 2) < round(val[0]-0.005, 2):
-                        print("The {:d}{:s} lower bound was breached, reaching a min. of {:.2f}".format(q_num, suff, min(flats)))
+                        if logg is not None:
+                            logg.warning("The {:d}{:s} lower bound was breached, reaching a min. of {:.2f}".format(q_num, suff, min(flats)))
+                        else:
+                            print("The {:d}{:s} lower bound was breached, reaching a min. of {:.2f}".format(q_num, suff, min(flats)))
 
                     diff_min = abs(min(flats) - val[0])
                     min_val = min(max(val[0], min(flats) - 0.1*diff_min), np.median(flats))
                         
                     if round(max(flats), 2) > round(val[1]+0.005, 2):
-                        print("The {:d}{:s} upper bound was breached, reaching a max. of {:.2f}".format(q_num, suff, max(flats)))
+                        if logg is not None:
+                            logg.warning("The {:d}{:s} upper bound was breached, reaching a max. of {:.2f}".format(q_num, suff, max(flats)))
+                        else:
+                            print("The {:d}{:s} upper bound was breached, reaching a max. of {:.2f}".format(q_num, suff, max(flats)))
                     
                     diff_max = abs(max(flats) - val[1])
                     max_val = max(min(val[1], max(flats) + 0.1*diff_max), np.median(flats))
@@ -2345,7 +2379,9 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
                 corner.corner(flat_samps, labels=gp_names, range=gp_bounds, 
                               color=best_colour)
                 if plot_dir is not None:
-                    plt.savefig(os.path.join(plot_dir, 'gp_corner_{}.png'.format(eignum)), bbox_inches='tight')
+                    plt.savefig(os.path.join(plot_dir, descrpn+'gp_corner_{}.png'.format(eignum)), bbox_inches='tight')
+                    if logg is not None:
+                        logg.info("GP corner plot num. {} saved to {}".format(eignum, os.path.join(plot_dir, descrpn+'gp_corner_{}.png'.format(eignum))))
 
                 if show_plots:
                     plt.show()
@@ -2373,6 +2409,8 @@ def run_each_gp(data, mjds_in, errs=None, kern_len=300, max_num=4, prior_min=200
         plot_eig_gp(mjds_pred, pred_res[:max_num+1,:], pred_vars[:max_num+1,:],
                     mjds_off, mjds, data[:,:max_num+1], errs, savename=gp_plotname,
                     bk_bgd=bk_bgd, show=show_plots)
+        if logg is not None:
+            logg.info("Plot of GPs for all components saved to "+gp_plotname)
                 
     if mjds_pred.min() < 20000:
         mjds_pred += mjds_off
