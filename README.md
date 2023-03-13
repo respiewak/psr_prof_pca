@@ -54,8 +54,8 @@ For every `psr_be_freq.pdv` file containing inconsistent bin counts, a new file 
 ### Cleaning and aligning profiles
 * * *
 
-The first steps of the analysis are contained in `first_clean_align.py`, which can be run from the terminal as follows:
-> `$ python first_clean_align.py -f 400 1400 -b AFB B0059+65`
+The first steps of the analysis are contained in `step_1_clean_align.py`, which can be run from the terminal as follows:
+> `$ python step_1_clean_align.py -f 400 1400 -b AFB B0059+65`
 
 
 The arguments for this script are:
@@ -107,7 +107,7 @@ Another method is to first use PCA to extract relevant eigenvectors and their ei
 #### Running the analysis
 
 Run
-> `jupyter [lab|notebook] second_profile_pca.ipynb`
+> `jupyter [lab|notebook] step_2_profile_pca.ipynb`
 
 and follow the steps outlined. As with the previous step, most plots are also saved to the `<data_dir>/plots` directory. 
 
@@ -129,7 +129,7 @@ At this time, there is a redimentary ''binning'' of the eigenvalues at the end o
 The third part of the analysis uses Gaussian Processes, optimised using Markov-Chain Monte Carlo, to model the eigenvalues and allow for the creation of a smooth dataset without gaps. The GP is implemented using `celerite`, using a Matern-3/2 kernel (plus a Jitter/white noise term), and the parameter optimisation is performed by `emcee` with flat priors for all parameters. The length scale of the kernel is restricted to values determined from the dataset: the lower bound is the 97th percentile of the distribution of lags between observation epochs, and the upper bound is half the total timespan. 
 
 Run
-> `jupyter [lab|notebook] third_eigenvalue_gps.ipynb`
+> `jupyter [lab|notebook] step_3_eigenvalue_gps.ipynb`
 
 and follow the steps outlined. As with the previous steps, most plots are also saved to the `<data_dir>/plots` directory. 
 
@@ -142,7 +142,7 @@ The output of this notebook is a `.npz` file containing an array of MJDs with ro
 The final step of this analysis is to test for correlations between the smoothed eigenvalues and nudot values. This is most easily done when the MJDs from the nudot dataset are given directly to the eigenvalue GP function in the previous step. (At present, the analysis does not work if the nudot MJDs are not used for the eigenvalue GP predictions.) 
 
 This is still work in progress, but there exists a notebook with some rough steps. Run 
-> `jupyter [lab|notebook] fourth_nudot_correlations.ipynb`
+> `jupyter [lab|notebook] step_4_nudot_correlations.ipynb`
 
 and follow the steps. The correlation values will be printed and saved to a text file, and a plot is made of the nudot values and eigenvalues for which the correlation coefficient is significant (`|rho| > 0.3`). 
 
@@ -150,5 +150,5 @@ and follow the steps. The correlation values will be printed and saved to a text
 #### Checking for periodicity
 * * *
 
-Lastly, we use the `astropy.timeseries.LombScargle` function to test for periodicity in the nudot values. This is the last part of the `fourth_nudot_correlations.ipynb` notebook and produces a plot of the resulting periodogram. The frequency of the maximum point in the periodogram is printed (and converted to a period in days). 
+Lastly, we use the `astropy.timeseries.LombScargle` function to test for periodicity in the nudot values. This is the last part of the `step_4_nudot_correlations.ipynb` notebook and produces a plot of the resulting periodogram. The frequency of the maximum point in the periodogram is printed (and converted to a period in days). 
 
