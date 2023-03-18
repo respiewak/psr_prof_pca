@@ -5,11 +5,12 @@
 import os, sys
 import numpy as np
 from matplotlib import pyplot as plt
+import argparse as ap
 import cmasher as cmr
 import corner    
 import multiprocessing as mpr
 mpr.set_start_method('fork')
-from all_prof_functions import (run_each_gp, plot_recon_profs)
+from all_prof_functions import (run_each_gp, plot_recon_profs, setup_log)
 
 
 # Set up some plotting stuff

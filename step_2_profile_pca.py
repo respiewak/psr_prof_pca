@@ -5,6 +5,7 @@
 import os, sys
 import numpy as np
 import matplotlib.pyplot as plt
+import argparse as ap
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 import scipy.optimize as op
@@ -15,7 +16,7 @@ import psrcelery
 from all_prof_functions import (bin_array, get_rms_bline,# check_null_prob, 
                                 calc_snr, _find_off_pulse,
                                 err_eigval, err_eigval_off, find_dists_outliers, rolling_out_rej,
-                                bad_mjds_eigs)
+                                bad_mjds_eigs, setup_log)
 
 #try:
 #    from all_prof_functions import check_null_prob
@@ -154,31 +155,28 @@ for psr in psr_list:
             #plt.plot(BE_aligned[:,100])   
             #plt.show()
 
-            BE_offrms = np.std(BE_aligned[400:,:], axis=0)
+            BE_off, _ = _find_off_pulse(BE_template)
+            BE_offrms = np.std(BE_aligned[BE_off,:], axis=0)
             BE_aligned = (BE_aligned.T - BE_template).T/BE_offrms
             #plt.plot(BE_aligned[:,100])   
             #plt.show()
-            plt.imshow(BE_aligned.T, aspect='auto')
-            plt.show()
+            #plt.imshow(BE_aligned.T, aspect='auto')
+            #plt.show()
 
             # Try to set the phase cuts automatically
-            if exist_DFB:
-                temp = BE_template
-                nbin = len(BE_template)
-    
-            lim, _ = _find_off_pulse(temp)
+            nbin = len(BE_template)
             phase = np.linspace(0, 1, nbin)
 
             # define on-pulse ranges as fractions
-            ip = False # Change this as necessary
+            ip_exist = len(phase[phase > 0.65]) != len(phase[BE_off][phase[BE_off] > 0.65]) # all points near IP are "off-pulse"
             one_bin = 1/nbin
-            peak_min = np.max(phase[lim][phase[lim] < 0.25])-2*one_bin
-            peak_max = np.min(phase[lim][phase[lim] > 0.25])+2*one_bin
+            peak_min = np.max(phase[BE_off][phase[BE_off] < 0.25])-2*one_bin
+            peak_max = np.min(phase[BE_off][phase[BE_off] > 0.25])+2*one_bin
             off_min = peak_min - min(peak_min/2, 0.03)
             off_max = min(2*peak_max - peak_min, 0.7)
-            if ip:
-                ip_min = np.max(phase[lim][phase[lim] < 0.75])-2*one_bin
-                ip_max = np.min(phase[lim][phase[lim] > 0.75])+2*one_bin
+            if ip_exist:
+                ip_min = np.max(phase[BE_off][phase[BE_off] < 0.75])-2*one_bin
+                ip_max = np.min(phase[BE_off][phase[BE_off] > 0.75])+2*one_bin
 
             # plot the templates and define some useful values
             with plt.style.context(plot_style):
@@ -192,7 +190,7 @@ for psr in psr_list:
 
                 ylims = plt.ylim()
                 plt.vlines([off_min, peak_min, peak_max, off_max], ylims[0], ylims[1], linestyle='dashed', colors='grey')
-                if ip:
+                if ip_exist:
                     plt.vlines([ip_mean, ip_max], ylims[0], ylims[1], linestyle='dashed', colors='grey')
         
                 plt.ylim(ylims)
@@ -208,7 +206,7 @@ for psr in psr_list:
             BE_bins = np.linspace(0, 1, num=BE_aligned.shape[0], endpoint=False)
             BE_mask = np.logical_and(BE_bins > off_min, BE_bins < off_max)
             BE_off = np.logical_or(BE_bins[BE_mask] < peak_min, BE_bins[BE_mask] > peak_max)
-            if ip:
+            if ip_exist:
                 BE_mask = np.logical_or(BE_mask, np.logical_and(BE_bins > ip_min, BE_bins < ip_max))
                 BE_off = np.logical_or(BE_bins[BE_mask] < peak_min, np.logical_and(BE_bins[BE_mask] > peak_max, BE_bins[BE_mask] < off_max))
     
@@ -218,14 +216,14 @@ for psr in psr_list:
             BE_comps_all = BE_pca.fit_transform(BE_aligned[BE_mask,:].T) * BE_offrms.reshape(-1,1)
 
             logger.info("Check that these are number of profiles by number of components:")
-            logger.info("AFB: {}".format(BE_comps_all.shape))
+            logger.info(BE+": {}".format(BE_comps_all.shape))
     
             logger.info("Check that these are number of components by number of bins (used):")
-            logger.info("AFB: {}".format(BE_pca.components_.shape))
+            logger.info(BE+": {}".format(BE_pca.components_.shape))
 
             BE_rms, _ = get_rms_bline(BE_aligned)
             #print(len(BE_rms))
-            logger.info("The (max, median, and min) off-pulse rms for AFB are ({:.5f}, {:.5f}, {:.5f})".format(BE_rms.min(), np.median(BE_rms), BE_rms.max()))
+            logger.info("The (max, median, and min) off-pulse rms for {} are ({:.5f}, {:.5f}, {:.5f})".format(BE, BE_rms.min(), np.median(BE_rms), BE_rms.max()))
     
             bad_mjds_be = bad_mjds_eigs(BE_aligned, BE_mjds_new, peak_min, peak_max)
 
@@ -256,7 +254,7 @@ for psr in psr_list:
                 fig.set_size_inches(7, 4)
                 fig.suptitle("{}, {}, example profiles and mean".format(psr, BE))
                 first, second = np.random.randint(BE_comps_all.shape[0], size=2)
-                if ip:
+                if ip_exist:
                     ax1 = fig.add_axes((l1, b, w1, h))
                     ax2 = fig.add_axes((l2, b, w2, h))
                     mask1 = np.logical_and(BE_mask, BE_bins < 0.5)
@@ -318,9 +316,10 @@ for psr in psr_list:
             BE_errs_new = err_eigval(BE_aligned[BE_mask,:], BE_pca.components_, BE_off) * BE_offrms.reshape(-1,1)
 
             plt.clf()
-            BE_mjds_out1 = find_dists_outliers(BE_comps_all, BE_mjds_new, psr, 'AFB', 6, savename=os.path.join(plots_dir, psr+"_BE_{}_eigval_dists.png".format(freq)),
-                                               first_out=True, sigma=5)
-            BE_mjds_out2 = rolling_out_rej(BE_comps_all, BE_mjds_new, psr, 'AFB', 6, first_out=True, show=False)
+            BE_mjds_out1 = find_dists_outliers(BE_comps_all, BE_mjds_new, psr, BE, 6, savename=os.path.join(plots_dir, desc+"_eigval_dists.png"),
+                                               first_out=True, sigma=5, show=False, bk_bgd=use_bk_bgd)
+            logger.info("Plot of eigenvalue distributions and outliers saved to "+os.path.join(plots_dir, desc+"_eigval_dists.png"))
+            BE_mjds_out2 = rolling_out_rej(BE_comps_all, BE_mjds_new, psr, BE, 6, first_out=True, show=False, bk_bgd=use_bk_bgd)
             #print(BE_mjds_out1)
 
             with plt.style.context(plot_style):

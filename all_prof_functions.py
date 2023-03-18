@@ -812,6 +812,7 @@ def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=Tru
     #c5 = cmap(0.9)
     
     with plt.style.context(style):
+        plt.clf()
         if savename or show:
             fig = plt.figure(num=1)
             fig.set_size_inches(8, 4)
@@ -918,9 +919,11 @@ def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=Tru
                 up_lim = np.percentile(fill_fun, 100-perc_val)
                         
                 if savename or show:
+                    y_uplim = max(np.max(fit_fun), np.max(dist))*1.1
                     ax.plot(extra_bins, fit_fun, '-', color=c2)
                 
             else:
+                y_uplim = np.max(dist)*1.1
                 low_lim = dist.mean() - sigma*dist.std()
                 up_lim = dist.mean() + sigma*dist.std()
         
@@ -928,9 +931,9 @@ def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=Tru
             #up_lim = max(popt[1]+2.5*popt[2], popt[4]+2.5*popt[5], popt[7]+2.5*popt[8])
     
             if savename or show:
-                ax.vlines([low_lim, up_lim], 0, max(np.max(fit_fun), np.max(dist))*1.1, ls='--')
+                ax.vlines([low_lim, up_lim], 0, y_uplim, ls='--')
                 ax.set_xlim(bins[0]-2*bin_size, bins[-1]+2*bin_size)
-                ax.set_ylim(0, max(np.max(fit_fun), np.max(dist))*1.1)
+                ax.set_ylim(0, y_uplim)
                 ax.text(0.72, 0.95, "{0:.1f}-$\sigma$ lo-lim: {1:.2f}; N={3:d}\n{0:.1f}-$\sigma$ up-limit: {2:.2f}; N={4:d}"
                         .format(sigma, low_lim, up_lim, len(vals[vals < low_lim]), len(vals[vals > up_lim])),
                        fontsize=10, transform=ax.transAxes, verticalalignment='top')
