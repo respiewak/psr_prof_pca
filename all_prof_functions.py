@@ -2579,7 +2579,8 @@ def plot_eig_gp(mjds_pred, pred_res, pred_var, mjd_offset=None,
             plt.show()
 
 
-def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_real=None, sub_mean=True, bk_bgd=False, savename=None):
+def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_real=None, sub_mean=True,
+                     bk_bgd=False, savename=None, show=True):
     """
     A function to reconstruct profiles from eigenvectors and predicted eigenvalues and make a waterfall-type plot
 
@@ -2598,6 +2599,7 @@ def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_re
         bk_bgd - bool, whether to use a dark background for the plot
         savename - str or NoneType, name of the file to save the plot
             Use `None` to not save the plot to disk (just show the plot)
+        show - bool, whether to show the plot instead of just saving it
     
     """
     
@@ -2666,7 +2668,8 @@ def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_re
         if savename is not None:
             plt.savefig(savename, bbox_inches='tight')
         
-        plt.show()
+        if show:
+            plt.show()
 
 
 

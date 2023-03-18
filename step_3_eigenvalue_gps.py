@@ -84,7 +84,7 @@ if type(frq_list) is int:
     frq_list = [frq_list]
 
 #be = 'afb'
-be_list = args[BE+'_list']
+be_list = args['be_list']
 if type(be_list) is str:
     be_list = [be_list]
     
@@ -120,10 +120,10 @@ for psr in psr_list:
                 
             logger.info("The shape of the {} eigval array is {}.".format(BE, BE_eigval.shape))
             if len(BE_errs) == BE_eigval.shape[0] and len(BE_mean) == BE_eigvec.shape[1] and BE_eigval.shape[1] == BE_eigvec.shape[0] \
-                and BE_eigval.shape[0] == len(BE_mjds) and BE_eigval.shape[0] == len(BE_rms) and BE_eigval_bin.shape[0] == len(BE_mjds_bin):
+                and BE_eigval.shape[0] == len(BE_mjds) and BE_eigval.shape[0] == len(BE_rms):
                 logger.info("All {} shapes and lengths agree".format(BE))
             else:
-                logger.warning("Lengths and shapes for BE do not agree!".format(BE))
+                logger.warning("Lengths and shapes for {} do not agree!".format(BE))
 
             with plt.style.context(plot_style):
                 plt.clf()
@@ -139,6 +139,10 @@ for psr in psr_list:
                 BE_mjds_pred = None
             else:
                 nudot_mjds = np.loadtxt(nudot_file, unpack=True, usecols=(0,))
+                if np.any(nudot_mjds != sorted(nudot_mjds)):
+                    logger.info("Sorting nudot MJDs")
+                    nudot_mjds = sorted(nudot_mjds)
+                    
                 avg_sep = np.mean(nudot_mjds[1:] - nudot_mjds[:-1]) # separation between nudot MJDs
                 nudot_min = min(nudot_mjds)
                 nudot_max = max(nudot_mjds)
@@ -156,13 +160,12 @@ for psr in psr_list:
                     post_mjds = np.linspace(nudot_max, new_max, num_post, endpoint=False)
                     nudot_mjds = np.append(nudot_mjds, post_mjds)
 
-                BE_mjds_pred = nudot_mjds[nudot_mjds <= max(BE_mjds)+0.1]
+                BE_lim = np.logical_and(nudot_mjds <= max(BE_mjds)+0.1, nudot_mjds >= min(BE_mjds)-0.1)
+                BE_mjds_pred = nudot_mjds[BE_lim]
                 BE_mjds_pred = np.unique(BE_mjds_pred) # this shouldn't be necessary... why is it?
         
                 logger.info("The MJDs for the GP prediction span from {:.5f} to {:.5f} with an average separation of {:.3f}"
                             .format(min(nudot_mjds), max(nudot_mjds), avg_sep))
-                if np.any(nudot_mjds != sorted(nudot_mjds)):
-                    logger.warning("Nudot MJDs are not sorted!!")
 
             read_old = False # make this not hard-coded
             gp_file = os.path.join(data_dir, '{}_{}_gps_fin.npz'.format(psr, freq))
@@ -184,22 +187,23 @@ for psr in psr_list:
                 kern_len = max(pmin*2, mjd_range/10)
 
                 BE_pred_res, BE_pred_vars, BE_mjds_pred = run_each_gp(
-                    BE_eigval, BE_mjds, BE_errs, kern_len=kern_len, max_num=args['max_num'],
+                    BE_eigval, BE_mjds, BE_errs, kern_len=kern_len, max_num=args['max_num']-1,
                     prior_min=pmin, prior_max=0.5*mjd_range, mjds_pred=BE_mjds_pred,
                     burn_chain=args['burn_chain'], prod_chain=args['prod_chain'], num_walkers=args['num_walkers'],
                     plot_chains=True, plot_corner=True, plot_gps=True, mcmc=True, multi=True,
-                    verb=True, bk_bgd=use_bk_bgd, show_plots=False, plot_dir=plots_dir, descrpn=desc,
+                    verb=False, bk_bgd=use_bk_bgd, show_plots=False, plot_dir=plots_dir, descrpn=desc,
                     gp_plotname=os.path.join(plots_dir, desc+'_gp_preds.png'), logg=logger)
 
             plot_recon_profs(BE_mean, BE_eigvec, BE_mjds_pred, BE_pred_res, psr, mjds_real=BE_mjds, bk_bgd=use_bk_bgd,
-                             sub_mean=True, savename=os.path.join(plots_dir, desc+'_recon_wfall.png'))
+                             sub_mean=True, savename=os.path.join(plots_dir, desc+'_recon_wfall.png'), show=False)
             logger.info("Plot of reconstructed profile saved to "+os.path.join(plots_dir, desc+'_recon_wfall.png'))
 
+            plt.close('all')
             # We want to save the arrays containing GP predicted values, so the following cells will check if an older file exists (which may contain arrays for different datasets), read that into a separate dictionary, and write both dictionaries to the '.npz' file. 
             var_dict[BE+'_mjds_pred'] = BE_mjds_pred
             var_dict[BE+'_res_pred'] = BE_pred_res
             var_dict[BE+'_vars_pred'] = BE_pred_vars
-
+            
         # after looping over all given backends, write out data for each frequency and pulsar combo
         out_file = os.path.join(data_dir, '{}_{}_gps_fin.npz'.format(psr, freq))
         old_dict = {}
