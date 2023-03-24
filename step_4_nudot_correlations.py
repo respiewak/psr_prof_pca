@@ -11,7 +11,7 @@ import astropy.units as u
 from matplotlib import pyplot as plt
 import argparse as ap
 import cmasher as cmr
-from all_prof_functions import plot_eig_gp
+from all_prof_functions import plot_eig_gp, setup_log
 
 
 # Set up some plotting stuff
@@ -43,6 +43,7 @@ if use_bk_bgd:
     c4 = cmap(0.55)
     c5 = cmap(0.68)
     c6 = cmap(0.815)
+    k_alpha = 0.6
 
 else:
     plot_style = 'default'
@@ -53,6 +54,7 @@ else:
     c4 = cmap(0.65)
     c5 = cmap(0.78)
     c6 = cmap(0.915)
+    k_alpha = 0.4
 
 #data_dir = '/home/s86932rs/research/nudot_stuff/'
 data_dir = args['data_dir']
@@ -120,18 +122,17 @@ for psr in psr_list:
             if not os.path.exists(npz_file):
                 raise(RuntimeError("File containing eigenvalue GPs does not exist"))
     
-            var_dict = {}
             with np.load(npz_file, allow_pickle=True) as f_npz:
                 for key in f_npz.keys():
                     if BE in key:
                         var_dict[key] = f_npz[key]
             
-                    if len(var_dict) == 0:
-                        raise(RuntimeError("No data found for that backend"))
+            if len(var_dict) == 0:
+                raise(RuntimeError("No data found for that backend"))
     
-                    eig_mjds = var_dict[BE+'_mjds_pred'] # these MJDs were previously set using the nu-dot MJDs
-                    eig_vals = var_dict[BE+'_res_pred']
-                    eig_errs = var_dict[BE+'_vars_pred']
+            eig_mjds = var_dict[BE+'_mjds_pred'] # these MJDs were previously set using the nu-dot MJDs
+            eig_vals = var_dict[BE+'_res_pred']
+            eig_errs = var_dict[BE+'_vars_pred']
 
             if min(nudot_mjds) >= max(eig_mjds) or min(eig_mjds) >= max(nudot_mjds):
                 logger.error("No overlap between timespans for "+DESC)
@@ -193,17 +194,91 @@ for psr in psr_list:
                             savename=os.path.join(plots_dir, desc+"_nudot_eigs_corr.png"))
                 logger.info("Plot of the Nudot GP and correlated Eigenvalue GPs saved to "+os.path.join(plots_dir, desc+"_nudot_eigs_corr.png"))
             
+            var_dict[BE+'_gp_corrs'] = gp_corrs
+            var_dict[BE+'_corr_lim'] = use_lim
             plt.close('all')
+            
+        # combine the data from different backends into a single plot
+        if len(be_list) < 2:
+            continue
+            
+        n_comp_sig = 0
+        for BE in BE_list:
+            n_comp_sig += len(var_dict[BE+'_gp_corrs'][var_dict[BE+'_corr_lim']])
+            
+        if n_comp_sig == 0:
+            continue
+            
+        cmap2 = cmr.gem_r if use_bk_bgd else cmr.neon
+        be_list = ['afb', 'dfb']
+        with plt.style.context(plot_style):
+            plt.clf()
+            fig, ax1 = plt.subplots() # ax1 will have the nudot values
+            fig.set_size_inches(14, 6)
+            ax2 = ax1.twinx() # ax2 will have the eigenvalues
+    
+            ax1.plot(nudot_mjds, nudot_vals, color=c1)
+            if nudot_errs is not None:
+                ax1.fill_between(nudot_mjds, nudot_vals - nudot_errs, nudot_vals + nudot_vars,
+                                 color=c1, alpha=k_alpha, zorder=10)
+        
+            ax1.set_ylabel('$\dot \\nu$ (Hz/s)')
+            ax1.set_xlabel('MJD (day)')
+    
+            icomp_all = 0
+            col_num_be_list = np.array([0.05+A*0.9/len(be_list) for A in range(len(be_list))])
+            for be_num, be in enumerate(be_list):
+                icomp_plot = 0
+                BE = be.upper()
+                comp_nums = np.arange(len(var_dict[BE+'_corr_lim']))
+                col_num_be = col_num_be_list[be_num]
+                col_eig_inc = 0.8*(0.9/len(be_list))/len(comp_nums[var_dict[BE+'_corr_lim']])
+                for icomp_be, preds, predv in zip(comp_nums, var_dict[BE+'_res_pred'], var_dict[BE+'_vars_pred']):
+                    if icomp_be == 1:
+                        suff = 'st'
+                    elif icomp_be == 2:
+                        suff = 'nd'
+                    elif icomp_be == 3:
+                        suff = 'rd'
+                    else:
+                        suff = 'th'
+                    
+                    # want to only plot significant correlated eigenvalues
+                    if var_dict[BE+'_corr_lim'][icomp_be]:
+                        # set the colour and alpha for the line
+                        col_comp = cmap2(col_num_be+icomp_plot*col_eig_inc)
+                        col_alpha = 0.9 - 0.1*icomp_plot
+                
+                        ax2.plot(var_dict[BE+'_mjds_pred'], preds, color=col_comp, alpha=col_alpha,
+                                 label='{}{} {} comp.; $\\rho_{{SRCC}}={:.2f}$'.format(icomp_be, suff, BE, var_dict[BE+'_gp_corrs'][icomp_be]))
+                        ax2.fill_between(var_dict[BE+'_mjds_pred'], preds - np.sqrt(predv), preds + np.sqrt(predv),
+                                         color=col_comp, alpha=k_alpha-0.1*icomp_plot)
+                
+                        icomp_plot += 1
+                
+            ax2.set_ylabel('Eigenvalue')
+            ylims1 = ax1.get_ylim()
+            yrange1 = ylims1[1] - ylims1[0]
+            ylims2 = ax2.get_ylim()
+            yrange2 = ylims2[1] - ylims2[0]
+            ax1.set_ylim(ylims1[1] - 1.1*yrange1, ylims1[1])
+            ax2.set_ylim(ylims2[1] - 1.1*yrange2, ylims2[1])
+            plt.legend(loc=4, fontsize=9)
+            fig.tight_layout()
+            plt.savefig(os.path.join(plots_dir, psr+'_{}_combined_corr.png'.format(freq)))
+            #plt.show()
+            
+        logger.info("Plot of the correlated eigenvalue series for all backends saved to "+os.path.join(plots_dir, psr+'_{}_combined_corr.png'.format(freq)))
+        plt.close('all')
 
     # Do a Lomb-Scargle analysis on the nu-dot data as well.
-    min_freq = 0.025/u.year # a period of 40 years
-    max_freq = 6/u.year # a period of ~60 days
+    min_freq = 0.05/u.year # a period of 20 years
+    max_freq = 4/u.year # a period of ~90 days
     nudot_errs = nudot_errs*u.Hz if nudot_errs is not None else None
     LS = LombScargle(nudot_mjds*u.day, nudot_vals*u.Hz, nudot_errs)
     freqs, power = LS.autopower(minimum_frequency=min_freq, maximum_frequency=max_freq, samples_per_peak=10)
     freq_max_power = freqs[power == np.max(power)][0]
-    logger.info("The frequency of the maximum power is {:.3f} ({})".format(freq_max_power.value, freq_max_power.unit))
-    logger.info("That corresponds to a period of {:.2f}".format((1/freq_max_power).to('day')))
+    logger.info("The frequency of the maximum power is {:.3f} ({}), which corresponds to a period of {:.2f}".format(freq_max_power.value, freq_max_power.unit, (1/freq_max_power).to('day')))
     with plt.style.context(plot_style):
         plt.clf()
         plt.plot(freqs, power, '-', color=c1)
