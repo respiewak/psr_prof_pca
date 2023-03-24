@@ -111,7 +111,13 @@ Run
 
 and follow the steps outlined. As with the previous step, most plots are also saved to the `<data_dir>/plots` directory. 
 
-The first step in this part of the analysis is to set the region used by the PCA. It is not optimal to include excessive amounts of the off-pulse region, but the calculation of uncertainties on the eigenvalues requires some off-pulse region to be included. These regions are defined automatically (with the exception of any interpulse region) but can be modified if necessary. (Note that the region input to the PCA need not be contiguous, so the ''jump'' from the `off_max` value to the `ip_min` value is fine.) 
+The first step in this part of the analysis is to set the region used by the PCA, using the high-S/N template. It is not optimal to include excessive amounts of the off-pulse region, but the calculation of uncertainties on the eigenvalues requires some off-pulse region to be included. These regions are defined automatically but can be modified if necessary. (Note that the region input to the PCA need not be contiguous, so the ''jump'' from the `off_max` value to the `ip_min` value is fine.) 
+
+
+(WIP:) The profiles are re-aligned and scaled using Mike Keith's `psrcelery` script which uses FFT to rotate the profile by a fraction of a bin. This step should be moved to the `step_1` script in future. 
+
+
+The actual PCA is run on profiles that have the mean (scaled template) subtracted and are normalised by the off-pulse rms. This allows the PCA to find variations that are at the noise level but common across many profiles. Note that the eigenvalues need to be de-normalised by the off-pulse rms to avoid biasing the data. 
 
 
 The PCA is run on the input profiles (with the `PCA` class from `scikit-learn`) using a mask to select the desired bin range. The output eigenvectors are contained in `out_pca.components_` and the eigenvalues in `out_comps_all`. (The PCA is hard-coded to retain the 30 most significant components/eigenvectors; this has been fine for my work but can be adjusted if necessary.) 
