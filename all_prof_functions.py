@@ -2472,6 +2472,7 @@ def plot_eig_gp(mjds_pred, pred_res, pred_var, mjd_offset=None,
     c3 = cmap(0.53)
     
     with plt.style.context(style):
+        plt.clf()
         fig = plt.figure(num=1)
         fig.set_size_inches(6, 4)
         title_text = "GP results for {} eigenvalues{}"

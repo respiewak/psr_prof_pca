@@ -18,11 +18,6 @@ from all_prof_functions import (bin_array, get_rms_bline,# check_null_prob,
                                 err_eigval, err_eigval_off, find_dists_outliers, rolling_out_rej,
                                 bad_mjds_eigs, setup_log)
 
-#try:
-#    from all_prof_functions import check_null_prob
-#except OSError:
-#    print("Could not import nulling analysis function")
-
 
 # Set up some plotting stuff
 plt.rc('savefig', bbox='tight')
