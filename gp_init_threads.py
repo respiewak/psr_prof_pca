@@ -10,7 +10,7 @@ def init_thread(kern_len, _data, mjds, errs=None):
     global data
     data = _data
     variance = np.var(data)
-    term1 = cel.terms.Matern32Term(np.log(1), np.log(kern_len), bounds=dict(log_sigma=(-15, 15), log_rho=(np.log(125.31), np.log(4071.35))))
+    term1 = cel.terms.Matern32Term(np.log(1), np.log(kern_len), bounds=dict(log_sigma=(-15, 15), log_rho=(np.log(10.30), np.log(1286.47))))
     term2 = cel.terms.JitterTerm(np.log(np.sqrt(variance)), bounds=dict(log_sigma=(-15, 15)))
     kernel = term1 + term2
     gp = cel.GP(kernel, np.mean(data), fit_mean=True)
@@ -26,7 +26,7 @@ def lnprob(p):
     global gp
     global data
     # Trivial uniform prior on length scale
-    if p[1] < np.log(125.31) or p[1] > np.log(4071.35):
+    if p[1] < np.log(10.30) or p[1] > np.log(1286.47):
         return(-np.inf)
             
     if np.any((-30 > p) + (p > 30)):

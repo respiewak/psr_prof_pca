@@ -278,6 +278,7 @@ for psr in psr_list:
     LS = LombScargle(nudot_mjds*u.day, nudot_vals*u.Hz, nudot_errs)
     freqs, power = LS.autopower(minimum_frequency=min_freq, maximum_frequency=max_freq, samples_per_peak=10)
     freq_max_power = freqs[power == np.max(power)][0]
+    #print("The signal-to-noise ratio (significance) of the peak found is {:.1f}".format(find_eq_width_snr(power.value)[1]))
     logger.info("The frequency of the maximum power is {:.3f} ({}), which corresponds to a period of {:.2f}".format(freq_max_power.value, freq_max_power.unit, (1/freq_max_power).to('day')))
     with plt.style.context(plot_style):
         plt.clf()
