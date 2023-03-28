@@ -30,9 +30,14 @@ import george
 from george import kernels
 import emcee
 import scipy.optimize as op
+from scipy import stats
+from astropy.timeseries import LombScargle
+import astropy.units as u
 import multiprocessing as mpr
 mpr.set_start_method('fork')
 import argparse as ap
+sys.path.append('/home/s86932rs/research/psrcelery/')
+import psrcelery
 from all_prof_functions import (aligndata, smart_align, calc_snr, plot_joydivision, make_fake_obss,
                                 make_fake_profile, add_gauss, do_rem_aln,
                                 read_pdv, _find_off_pulse, err_eigval, find_eq_width_snr,
@@ -197,7 +202,20 @@ plot_joydivision(fake_aligned, 'test_aligned', savename=os.path.join(plot_dir, '
 # PCA is sensitive to misalignment of profiles. Any misaligned profiles will result in one or more extraneous eigenvectors, skewing the analysis and producing outlier eigenvalues, which could cause the GP to fail. You should always check the waterfall plots for misaligned profiles, and then check the eigenvalue plots for significant outliers. The MJDs for any outliers can be given to the `do_rem_aln` function for removal.
 # 
 # Unless your pulse profile is very wide, it is unwise to include the entire rotation in the PCA as it will look for patterns in the off-pulse which are not relevant to the analysis. Find the rough on-pulse region and make a bin-wise mask (array of booleans). If the profile has an interpulse, that region should be included as well, cutting out any off-pulse region between the MP and IP.
-#
+
+# refine the alignment to better than a bin using an FFT technique
+fake_aligned = psrcelery.data.align_and_scale(fake_aligned.T, fake_template, nharm='auto').T
+
+fake_off, _ = _find_off_pulse(fake_template)
+fake_offrms = np.std(fake_aligned[fake_off,:], axis=0)
+fake_aligned = (fake_aligned.T - fake_template).T/fake_offrms
+with plt.style.context(plot_style):
+    plt.imshow(fake_aligned.T, aspect='auto')
+    plt.ylabel('Observation num.')
+    plt.xlabel('Phase Bin')
+    plt.title('Waterfall after subtraction of mean and normalisation by off-pulse rms')
+    plt.savefig(os.path.join(plot_dir, 'subd_normd_wfall.png'), bbox_inches='tight')
+    #plt.show()
 
 lim, _ = _find_off_pulse(fake_template)
 test_nbin = len(fake_template)
@@ -246,7 +264,7 @@ test_off = np.logical_or(test_bins[test_mask] < peak_min, test_bins[test_mask] >
 
 # test the PCA stuff
 test_pca = PCA(n_components=30)
-test_comps_all = test_pca.fit_transform(fake_aligned[test_mask,:].T)
+test_comps_all = test_pca.fit_transform(fake_aligned[test_mask,:].T) * fake_offrms.reshape(-1,1)
 
 # plot the first six principal components
 with plt.style.context(plot_style):
@@ -270,7 +288,7 @@ with plt.style.context(plot_style):
 
 # The uncertainties on the eigenvalues are very useful for identifying outliers, and for accurate GP results. The function to calculate these (using error propagation) requires the full (masked) dataset, the components found by PCA, and the portion of the masked region that is the off-pulse region (as seen above, some off-pulse is included for this reason).
 
-new_errs = err_eigval(fake_aligned[test_mask,:], test_pca.components_, test_off)
+new_errs = err_eigval(fake_aligned[test_mask,:], test_pca.components_, test_off) * fake_offrms.reshape(-1,1)
 
 with plt.style.context(plot_style):
     plt.clf()
@@ -320,3 +338,51 @@ pred_res, pred_vars, mjds_pred = run_each_gp(test_comps_all, fake_mjds_new, new_
 
 plot_recon_profs(test_pca.mean_, test_pca.components_, mjds_pred, pred_res, 'test', mjds_real=fake_mjds_new,
                  sub_mean=True, savename=os.path.join(plot_dir, 'recon_from_gps.png'), bk_bgd=use_bk_bgd)
+
+# The last step of the real analysis is to look at the statistics, whether or not there is any significant correlation between the eigenvalue timeseries and the nu-dot timeseries. Since we simply need to show the use of these functions for this tutorial, we will replace the nu-dot timeseries with random numbers, or values derived from the eigenvalue timeseries themselves (to ensure correlation). 
+
+# make your fake nu-dot timeseries
+nudot_mjds = mjds_pred
+#nudot_vals = np.random.normal(size=len(nudot_mjds)) # Gaussian noise, should not show correlation
+nudot_vals = np.random.normal(0, pred_res[0,:].std()/3, size=len(nudot_mjds))+pred_res[0,:] # not random, based on most significant eigenvalue timeseries
+nudot_lim = np.array([True for A in nudot_mjds])
+
+# pred_res, pred_vars, mjds_pred
+eig_vals = pred_res
+eig_mjds = mjds_pred
+eig_lim = np.array([True for A in mjds_pred])
+
+# use the Spearman Rank Correlation test on the eigenvalue timeseries
+gp_corrs = np.zeros(eig_vals.shape[0])
+for eignum in range(eig_vals.shape[0]):
+    if eignum == 1:
+        suff = 'st'
+    elif eignum == 2:
+        suff = 'nd'
+    elif eignum == 3:
+        suff = 'rd'
+    else:
+        suff = 'th'
+    res = stats.spearmanr(eig_vals[eignum,eig_lim], nudot_vals[nudot_lim])
+    gp_corrs[eignum] = res.correlation
+    print("The correlation value for the {}{} eigenvector is {:.3f}".format(eignum, suff, res.correlation))
+
+# Finally, do a LombScargle analysis to check for periodicity in the nu-dot timeseries. As with the correlation test, this should find nothing of significance using the Gaussian nu-dot timeseries, but it should find some periodicity for a nu-dot timeseries based on the most significant eigenvalue (since we have simulated a dataset with quasi-periodic variation). The significance of the value identified is estimated by the signal-to-noise ratio of the array of ''power'' from the LombScargle, but this is a very rough indicator. 
+
+min_freq = 0.025/u.year # a period of 40 years
+max_freq = 4/u.year # a period of ~90 days
+nudot_errs = None # we could include uncertainties on nu-dot if we had them
+LS = LombScargle(nudot_mjds*u.day, nudot_vals*u.Hz, nudot_errs)
+freqs, power = LS.autopower(minimum_frequency=min_freq, maximum_frequency=max_freq, samples_per_peak=10)
+freq_max_power = freqs[power == np.max(power)][0]
+print("The signal-to-noise ratio (significance) of the peak found is {:.1f}".format(find_eq_width_snr(power.value)[1]))
+print("The frequency of the maximum power is {:.4f} ({})".format(freq_max_power.value, freq_max_power.unit))
+print("That corresponds to a period of {:.1f}".format((1/freq_max_power).to('day')))
+with plt.style.context(plot_style):
+    plt.clf()
+    plt.plot(freqs, power, '-', color=c1)
+    plt.ylabel('Periodogram Power')
+    plt.xlabel('Frequency ({})'.format(freqs.unit))
+    plt.xlim(min_freq.value, max_freq.value)
+    plt.savefig(os.path.join(plots_dir, 'test_nudot_LS.png'), bbox_inches='tight')
+    #plt.show()
