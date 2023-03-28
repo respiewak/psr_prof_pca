@@ -201,10 +201,10 @@ plot_joydivision(fake_aligned, 'test_aligned', savename=os.path.join(plot_dir, '
 # 
 # PCA is sensitive to misalignment of profiles. Any misaligned profiles will result in one or more extraneous eigenvectors, skewing the analysis and producing outlier eigenvalues, which could cause the GP to fail. You should always check the waterfall plots for misaligned profiles, and then check the eigenvalue plots for significant outliers. The MJDs for any outliers can be given to the `do_rem_aln` function for removal.
 # 
-# Unless your pulse profile is very wide, it is unwise to include the entire rotation in the PCA as it will look for patterns in the off-pulse which are not relevant to the analysis. Find the rough on-pulse region and make a bin-wise mask (array of booleans). If the profile has an interpulse, that region should be included as well, cutting out any off-pulse region between the MP and IP.
+# In order to ensure PCA finds low-level variations that are at the noise level but persistent in time, we want to first subtract the mean pulse shape (using the template) and re-normalise using the off-pulse rms. 
 
 # refine the alignment to better than a bin using an FFT technique
-fake_aligned = psrcelery.data.align_and_scale(fake_aligned.T, fake_template, nharm='auto').T
+#fake_aligned = psrcelery.data.align_and_scale(fake_aligned.T, fake_template, nharm='auto').T # this has been moved to do_rem_aln
 
 fake_off, _ = _find_off_pulse(fake_template)
 fake_offrms = np.std(fake_aligned[fake_off,:], axis=0)
@@ -216,6 +216,8 @@ with plt.style.context(plot_style):
     plt.title('Waterfall after subtraction of mean and normalisation by off-pulse rms')
     plt.savefig(os.path.join(plot_dir, 'subd_normd_wfall.png'), bbox_inches='tight')
     #plt.show()
+    
+# Unless your pulse profile is very wide, it is unwise to include the entire rotation in the PCA as it will look for patterns in the off-pulse which are not relevant to the analysis. Find the rough on-pulse region and make a bin-wise mask (array of booleans). If the profile has an interpulse, that region should be included as well, cutting out any off-pulse region between the MP and IP. 
 
 lim, _ = _find_off_pulse(fake_template)
 test_nbin = len(fake_template)

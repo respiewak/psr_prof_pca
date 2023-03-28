@@ -312,9 +312,9 @@ for psr in psr_list:
 
             plt.clf()
             BE_mjds_out1 = find_dists_outliers(BE_comps_all, BE_mjds_new, psr, BE, 6, savename=os.path.join(plots_dir, desc+"_eigval_dists.png"),
-                                               first_out=True, sigma=5, show=False, bk_bgd=use_bk_bgd)
+                                               first_out=True, sigma=5, show=False, bk_bgd=use_bk_bgd, logg=logger)
             logger.info("Plot of eigenvalue distributions and outliers saved to "+os.path.join(plots_dir, desc+"_eigval_dists.png"))
-            BE_mjds_out2 = rolling_out_rej(BE_comps_all, BE_mjds_new, psr, BE, 6, first_out=True, show=False, bk_bgd=use_bk_bgd)
+            BE_mjds_out2 = rolling_out_rej(BE_comps_all, BE_mjds_new, psr, BE, 6, first_out=True, show=False, bk_bgd=use_bk_bgd, logg=logger)
             #print(BE_mjds_out1)
 
             with plt.style.context(plot_style):

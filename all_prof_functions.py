@@ -18,6 +18,8 @@ import multiprocessing as mpr
 #import gp_init_threads as th_init
 import cmasher as cmr
 import logging
+sys.path.append('/home/s86932rs/research/psrcelery/')
+import psrcelery
 
 ## fix these lines to use the nulling analysis functions
 if os.path.exists('../nulling2'):
@@ -756,7 +758,7 @@ def read_bad_mjd_file(filename):
 
 # find outliers by first modeling the distribution of eigenvalues (each component separately) as 3 gaussians (bimodal distribution plus)
 def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=True, bk_bgd=False,
-                        first_out=False, nbins=80, return_lim=False, sigma=3):
+                        first_out=False, nbins=80, return_lim=False, sigma=3, logg=None, verb=False):
     """
     Find outliers based on the eigenvalues
     Number of points per eigenvector must be greater than 100 (150 for 3-gaussian fit)
@@ -774,6 +776,8 @@ def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=Tru
         nbins : int, the number of bins to use in the histograms
         return_lim : boolean, whether to return just the boolean mask to be applied to `mjds` such that `mjds[mask] == bad_mjds`
         sigma : float or int, the number of standard deviations to use as a cut for all outliers
+        logg : logging object
+        verb : boolean
         
     Output:
         a 1D array of:
@@ -869,7 +873,10 @@ def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=Tru
                 popt, pcov = op.curve_fit(_gauss_3, mids, dist, p0, bounds=bounds)
                 proceed3 = True
             except RuntimeError:
-                print("Could not fit 3 gaussians to the data, trying 2 gaussians")
+                if logg is not None:
+                    logg.info("Could not fit 3 gaussians to the data, trying 2 gaussians")
+                elif verb:
+                    print("Could not fit 3 gaussians to the data, trying 2 gaussians")
                 p0 = (dist[guess_1], mids[guess_1], bin_size*2, dist[guess_2], mids[guess_2], bin_size*2)
                 bounds = ([0, bins[0], 0, 0, bins[0], 0],
                           [np.max(dist)*2, bins[-1], bins[-1]-bins[0], np.max(dist)*2, bins[-1], bins[-1]-bins[0]])
@@ -877,7 +884,10 @@ def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=Tru
                     popt, pcov = op.curve_fit(_gauss_2, mids, dist, p0, bounds=bounds)
                     proceed2 = True
                 except RuntimeError:
-                    print("Failed to fit the data with 2 gaussians; proceeding with only rough outlier excision")
+                    if logg is not None:
+                        logg.warning("Failed to fit the data with 2 gaussians; proceeding with only rough outlier excision")
+                    else:
+                        print("Failed to fit the data with 2 gaussians; proceeding with only rough outlier excision")
             
             if proceed3 or proceed2:
                 if proceed3:
@@ -955,7 +965,7 @@ def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=Tru
         return(mjds[lim_out])
 
 
-def rolling_out_rej(eigvals, mjds, psr, be, ncomp=5, savename=None, show=True, bk_bgd=False, first_out=False, nbins=40):
+def rolling_out_rej(eigvals, mjds, psr, be, ncomp=5, savename=None, show=True, bk_bgd=False, first_out=False, nbins=40, logg=None, verb=False):
     """
     A wrapper for `find_dists_outliers` which checks if the dataset is large enough to be split
     into 8 sections to be checked for outliers (with overlap)
@@ -974,20 +984,31 @@ def rolling_out_rej(eigvals, mjds, psr, be, ncomp=5, savename=None, show=True, b
             evs = eigvals[lim,:]
             mds = mjds[lim]
             if len(mds) >= nbins*2 and len(mjds) >= 100:
-                mjds_out = find_dists_outliers(evs, mds, psr, be, ncomp, None, False, bk_bgd, first_out, nbins)
+                mjds_out = find_dists_outliers(evs, mds, psr, be, ncomp, None, False, bk_bgd, first_out, nbins, logg=logg)
                 plt.close('all')
                 short_list = np.unique(np.append(short_list, mjds_out))
             else:
                 count_fails += 1
             
         if count_fails > 3:
-            print("Warning: at least half of the sections had too few observations for the calculation")
+            if logg is not None:
+                logg.warning("At least half of the sections had too few observations for the calculation")
+            else:
+                print("Warning: at least half of the sections had too few observations for the calculation")
             
     elif nobs >= nbins*3:
-        print("Cannot split dataset into sections; analysing all together")
+        if logg is not None:
+            logg.info("Cannot split dataset into sections; analysing all together")
+        elif verb:
+            print("Cannot split dataset into sections; analysing all together")
+            
         short_list = find_dists_outliers(eigvals, mjds, psr, be, ncomp, savename, show, bk_bgd, first_out, nbins)
     else:
-        print("Cannot reject outliers using this method; too few observations")
+        if logg is not None:
+            logg.info("Cannot reject outliers using this method; too few observations")
+        elif verb:
+            print("Cannot reject outliers using this method; too few observations")
+            
         short_list = mjds
         
     return(short_list)
@@ -1208,6 +1229,10 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
             sum_val[i] = min_pos/2
             
     a_aln_norm = a_aln/sum_val
+    try:
+        a_aln_norm = psrcelery.data.align_and_scale(a_aln_norm.T, a_temp_norm, nharm='auto').T
+    except ValueError:
+        logg.warning("FFT alignment failed for this dataset")
     
     if logg:
         logg.info("In total, removed {} observations, aligned remaining obs., and normalised according to on-pulse sum".format(nobs_in - a_aln_norm.shape[1]))
