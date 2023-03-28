@@ -155,8 +155,16 @@ for psr in psr_list:
             BE_aligned = (BE_aligned.T - BE_template).T/BE_offrms
             #plt.plot(BE_aligned[:,100])   
             #plt.show()
-            #plt.imshow(BE_aligned.T, aspect='auto')
-            #plt.show()
+            with plt.style.context(plot_style):
+                plt.clf()
+                fig = plt.figure(num=1)
+                fig.set_size_inches(6, 10)
+                plt.imshow(BE_aligned.T, aspect='auto')
+                plt.ylabel('Observation num.')
+                plt.xlabel('Phase Bin')
+                plt.title('Waterfall after subtraction of mean and normalisation by off-pulse rms')
+                plt.savefig(os.path.join(plots_dir, desc+'_subd_normd_wfall.png'), bbox_inches='tight')
+                #plt.show()
 
             # Try to set the phase cuts automatically
             nbin = len(BE_template)
@@ -168,10 +176,11 @@ for psr in psr_list:
             peak_min = np.max(phase[BE_off][phase[BE_off] < 0.25])-2*one_bin
             peak_max = np.min(phase[BE_off][phase[BE_off] > 0.25])+2*one_bin
             off_min = peak_min - min(peak_min/2, 0.03)
-            off_max = min(2*peak_max - peak_min, 0.7)
+            off_max = min(2*peak_max - peak_min, 0.65)
             if ip_exist:
-                ip_min = np.max(phase[BE_off][phase[BE_off] < 0.75])-2*one_bin
-                ip_max = np.min(phase[BE_off][phase[BE_off] > 0.75])+2*one_bin
+                ip_midd = np.mean(phase[np.logical_and(BE_off, phase > 0.65)])
+                ip_min = np.max(phase[BE_off][phase[BE_off] < ip_midd])-2*one_bin
+                ip_max = np.min(phase[BE_off][phase[BE_off] > ip_midd])+2*one_bin
 
             # plot the templates and define some useful values
             with plt.style.context(plot_style):
@@ -186,7 +195,7 @@ for psr in psr_list:
                 ylims = plt.ylim()
                 plt.vlines([off_min, peak_min, peak_max, off_max], ylims[0], ylims[1], linestyle='dashed', colors='grey')
                 if ip_exist:
-                    plt.vlines([ip_mean, ip_max], ylims[0], ylims[1], linestyle='dashed', colors='grey')
+                    plt.vlines([ip_min, ip_max], ylims[0], ylims[1], linestyle='dashed', colors='grey')
         
                 plt.ylim(ylims)
                 plt.xticks(np.linspace(0, 1, 21))
@@ -247,13 +256,13 @@ for psr in psr_list:
                 plt.clf()
                 fig = plt.figure(num=1)
                 fig.set_size_inches(7, 4)
-                fig.suptitle("{}, {}, example profiles and mean".format(psr, BE))
+                fig.suptitle("{}, {}, {}, example profiles and mean".format(psr, freq, BE))
                 first, second = np.random.randint(BE_comps_all.shape[0], size=2)
                 if ip_exist:
                     ax1 = fig.add_axes((l1, b, w1, h))
                     ax2 = fig.add_axes((l2, b, w2, h))
-                    mask1 = np.logical_and(BE_mask, BE_bins < 0.5)
-                    mask2 = np.logical_and(BE_mask, BE_bins > 0.5)
+                    mask1 = np.logical_and(BE_mask, BE_bins < 0.65)
+                    mask2 = np.logical_and(BE_mask, BE_bins >= 0.65)
                     mean_mask1 = np.arange(len(BE_pca.mean_)) < len(BE_bins[mask1])
                     mean_mask2 = np.arange(len(BE_pca.mean_)) >= len(BE_bins[mask1])
                     for ax, mask, mmask in zip([ax1, ax2], [mask1, mask2], [mean_mask1, mean_mask2]):

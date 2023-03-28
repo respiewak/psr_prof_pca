@@ -787,7 +787,11 @@ def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=Tru
     """
     
     if len(mjds) < 100:
-        print("Dataset too small")
+        if logg is not None:
+            logg.warning("Dataset too small")
+        else:
+            print("Dataset too small")
+            
         if return_lim:
             return(np.array([False for A in mjds]))
         else:
@@ -885,7 +889,7 @@ def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=Tru
                     proceed2 = True
                 except RuntimeError:
                     if logg is not None:
-                        logg.warning("Failed to fit the data with 2 gaussians; proceeding with only rough outlier excision")
+                        logg.info("Failed to fit the data with 2 gaussians; proceeding with only rough outlier excision")
                     else:
                         print("Failed to fit the data with 2 gaussians; proceeding with only rough outlier excision")
             
@@ -1002,7 +1006,7 @@ def rolling_out_rej(eigvals, mjds, psr, be, ncomp=5, savename=None, show=True, b
         elif verb:
             print("Cannot split dataset into sections; analysing all together")
             
-        short_list = find_dists_outliers(eigvals, mjds, psr, be, ncomp, savename, show, bk_bgd, first_out, nbins)
+        short_list = find_dists_outliers(eigvals, mjds, psr, be, ncomp, savename, show, bk_bgd, first_out, nbins, logg=logg)
     else:
         if logg is not None:
             logg.info("Cannot reject outliers using this method; too few observations")

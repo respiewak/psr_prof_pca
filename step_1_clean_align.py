@@ -39,9 +39,33 @@ pars.add_argument('-d', '--data_dir', default='../profiles/',
 pars.add_argument('-m', '--bad_mjd_file', default='bad_mjds_jbo.txt',
                   help="An ascii file listing MJDs of observations to exclude based on "\
                   "pulsar name, backend, and frequency band")
+pars.add_argument('-k', '--use_bk_bgd', action='store_true',
+                  help='Use a dark background for all plots')
 pars.add_argument('-l', '--log_name', default='prof_analysis',
                   help="Name for the log file")
 args = vars(pars.parse_args())
+
+use_bk_bgd = args['use_bk_bgd']
+if use_bk_bgd:
+    plot_style = 'dark_background'
+    # The CMasher package provides lots of lovely colour maps; chroma is a handy sequential cmap
+    cmap = cmr.chroma_r
+    c1 = cmap(0.0)
+    c2 = cmap(0.1)
+    c3 = cmap(0.33)
+    c4 = cmap(0.55)
+    c5 = cmap(0.68)
+    c6 = cmap(0.815)
+
+else:
+    plot_style = 'default'
+    cmap = cmr.chroma
+    c1 = cmap(0.0)
+    c2 = cmap(0.3)
+    c3 = cmap(0.53)
+    c4 = cmap(0.65)
+    c5 = cmap(0.78)
+    c6 = cmap(0.915)
 
 data_dir = args['data_dir']
 log_name = args['log_name']
@@ -105,10 +129,10 @@ for psr in psr_list:
                 var_dict[BE] = True
                 continue
 
-            plot_joydivision(raw_data, psr, show=False,
-                             savename=os.path.join(plots_dir, '{}_bk.png'.format(desc)))
+            plot_joydivision(raw_data, psr, show=False, bk_bgd=use_bk_bgd,
+                             savename=os.path.join(plots_dir, '{}_raw.png'.format(desc)))
             logger.info("Saved the joy division plot of raw data in "\
-                        +os.path.join(plots_dir, '{}_bk.png'.format(desc)))
+                        +os.path.join(plots_dir, '{}_raw.png'.format(desc)))
 
             plt.close('all')
             if not DESC in bms_dict:
@@ -160,7 +184,7 @@ for psr in psr_list:
                     cut = mids[np.argmin(dist[np.logical_and(mids > popt[1], mids < popt[4])])]
                     lims = snrs < cut
 
-                    with plt.style.context('default'):
+                    with plt.style.context(plot_style):
                         plt.clf()
                         prof1 = np.sum(var_dict[BE+'_aligned'][:,lims], axis=1)
                         prof2 = np.sum(var_dict[BE+'_aligned'][:,np.logical_not(lims)], axis=1)
@@ -178,7 +202,7 @@ for psr in psr_list:
                 var_dict[BE+"_null_prob"] = check_null_prob(var_dict[BE+'_aligned'], peak_bin=100,
                                                             ip=False, on_min=None, onf_range=None,
                                                             off_min=None)
-                with plt.style.context('default'):
+                with plt.style.context(plot_style):
                     plt.clf()
                     plt.plot(var_dict[BE+"_mjds_null"], var_dict[BE+"_null_prob"])
                     plt.ylabel('Probability of Null')
@@ -220,14 +244,14 @@ for psr in psr_list:
                 
             var_dict[BE+'_aligned'] = np.nan_to_num(var_dict[BE+'_aligned'])
 
-            plot_joydivision(var_dict[BE+'_aligned'], psr, show=False,
-                             savename=os.path.join(plots_dir, '{}_aligned_bk.png'.format(desc)))
+            plot_joydivision(var_dict[BE+'_aligned'], psr, show=False, bk_bgd=use_bk_bgd,
+                             savename=os.path.join(plots_dir, '{}_aligned.png'.format(desc)))
             logger.info("Saved the joy division plot of cleaned data in "\
-                        +os.path.join(plots_dir, '{}_aligned_bk.png'.format(desc)))
+                        +os.path.join(plots_dir, '{}_aligned.png'.format(desc)))
             plt.close('all')
 
         npz_file = os.path.join(data_dir, '{}_{}_arrs.npz'.format(psr, freq))
-        if 'AFB' in var_dict.keys() and 'DFB' in var_dict.keys():
+        if np.all([BE in var_dict.keys() for BE in BE_list]):
             logger.warning("No data to save to a .npz file, skipping")
             if os.path.exists(npz_file):
                 os.remove(npz_file)
