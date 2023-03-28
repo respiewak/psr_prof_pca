@@ -157,12 +157,28 @@ for psr in psr_list:
             #plt.show()
             with plt.style.context(plot_style):
                 plt.clf()
+                if use_bk_bgd:
+                    cmap2 = cmr.iceburn
+                else:
+                    cmap2 = cmr.fusion_r
+                    
                 fig = plt.figure(num=1)
                 fig.set_size_inches(6, 10)
-                plt.imshow(BE_aligned.T, aspect='auto')
+                vmax = np.percentile(abs(BE_aligned), 99.875)
+                vmin = -vmax
+                if vmin > np.min(BE_aligned) and vmax < np.max(BE_aligned):
+                    extend = 'both'
+                elif vmin > np.min(BE_aligned):
+                    extend = 'min'
+                elif vmax < np.max(BE_aligned):
+                    extend = 'max'
+                    
+                p = plt.imshow(BE_aligned.T, vmin=vmin, vmax=vmax, cmap=cmap2,
+                               origin='lower', aspect='auto', interpolation='nearest')
+                fig.colorbar(p, extend=extend, fraction=0.05)
                 plt.ylabel('Observation num.')
                 plt.xlabel('Phase Bin')
-                plt.title('Waterfall after subtraction of mean and normalisation by off-pulse rms')
+                plt.title("Waterfall after sub'n of mean and norm'n by off-pulse rms")
                 plt.savefig(os.path.join(plots_dir, desc+'_subd_normd_wfall.png'), bbox_inches='tight')
                 #plt.show()
 

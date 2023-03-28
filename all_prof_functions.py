@@ -948,8 +948,9 @@ def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=Tru
                 ax.vlines([low_lim, up_lim], 0, y_uplim, ls='--')
                 ax.set_xlim(bins[0]-2*bin_size, bins[-1]+2*bin_size)
                 ax.set_ylim(0, y_uplim)
-                ax.text(0.72, 0.95, "{0:.1f}-$\sigma$ lo-lim: {1:.2f}; N={3:d}\n{0:.1f}-$\sigma$ up-limit: {2:.2f}; N={4:d}"
-                        .format(sigma, low_lim, up_lim, len(vals[vals < low_lim]), len(vals[vals > up_lim])),
+                descrpn = "\nRough Limits" if not (proceed2 or proceed3) else ""
+                ax.text(0.72, 0.95, "{0:.1f}-$\sigma$ lo-lim: {1:.2f}; N={3:d}\n{0:.1f}-$\sigma$ up-limit: {2:.2f}; N={4:d}{}"
+                        .format(sigma, low_lim, up_lim, len(vals[vals < low_lim]), len(vals[vals > up_lim]), descrpn),
                        fontsize=10, transform=ax.transAxes, verticalalignment='top')
                 ax.text(0.025, 0.95, "$i_{{comp}}$ = {}".format(ncomp-icomp-1), fontsize=10, transform=ax.transAxes, verticalalignment='top')
         
