@@ -102,7 +102,8 @@ for psr in psr_list:
             
             npz_file = os.path.join(data_dir, psr+'_{}_eigs.npz'.format(freq))
             if not os.path.exists(npz_file):
-                raise(RuntimeError("File containing eigenvalues does not exist"))
+                logger.error("File containing eigenvalues for {} does not exist".format(DESC))
+                continue
 
             nudot_file = os.path.join(data_dir, psr+"_nudot_gp.txt") # contains columns of MJD, nudot, uncertainty
 

@@ -150,8 +150,8 @@ for psr in psr_list:
             #plt.plot(BE_aligned[:,100])   
             #plt.show()
 
-            BE_off, _ = _find_off_pulse(BE_template)
-            BE_offrms = np.std(BE_aligned[BE_off,:], axis=0)
+            BE_offpulse, _ = _find_off_pulse(BE_template)
+            BE_offrms = np.std(BE_aligned[BE_offpulse,:], axis=0)
             BE_aligned = (BE_aligned.T - BE_template).T/BE_offrms
             #plt.plot(BE_aligned[:,100])   
             #plt.show()
@@ -162,7 +162,7 @@ for psr in psr_list:
                 else:
                     cmap2 = cmr.fusion_r
                     
-                fig = plt.figure(num=1)
+                fig = plt.figure(num=2)
                 fig.set_size_inches(6, 10)
                 vmax = np.percentile(abs(BE_aligned), 99.875)
                 vmin = -vmax
@@ -187,17 +187,26 @@ for psr in psr_list:
             phase = np.linspace(0, 1, nbin)
 
             # define on-pulse ranges as fractions
-            ip_exist = len(phase[phase > 0.65]) != len(phase[BE_off][phase[BE_off] > 0.65]) # all points near IP are "off-pulse"
+            ip_exist = len(phase[phase > 0.65]) != len(phase[BE_offpulse][phase[BE_offpulse] > 0.65]) # all points near IP are "off-pulse"
             one_bin = 1/nbin
-            peak_min = np.max(phase[BE_off][phase[BE_off] < 0.25])-2*one_bin
-            peak_max = np.min(phase[BE_off][phase[BE_off] > 0.25])+2*one_bin
+            peak_min = np.max(phase[BE_offpulse][phase[BE_offpulse] < 0.25])-2*one_bin
+            peak_max = np.min(phase[BE_offpulse][phase[BE_offpulse] > 0.25])+2*one_bin
             off_min = peak_min - min(peak_min/2, 0.03)
             off_max = min(2*peak_max - peak_min, 0.65)
             if ip_exist:
                 ip_midd = np.mean(phase[np.logical_and(BE_off, phase > 0.65)])
-                ip_min = np.max(phase[BE_off][phase[BE_off] < ip_midd])-2*one_bin
-                ip_max = np.min(phase[BE_off][phase[BE_off] > ip_midd])+2*one_bin
-
+                ip_min = np.max(phase[BE_offpulse][phase[BE_offpulse] < ip_midd])-2*one_bin
+                ip_max = np.min(phase[BE_offpulse][phase[BE_offpulse] > ip_midd])+2*one_bin
+                off_pulse = np.logical_and(phase > peak_max, phase < off_max)
+                inter_pulse = np.logical_and(phase > ip_min, phase < ip_max)
+                if np.abs(np.mean(BE_temp[off_pulse]) - np.mean(BE_temp[inter_pulse])) < np.std(BE_temp[off_pulse]):
+                    ip_midd = 0.75
+                    ip_min = 0.71
+                    ip_max = 0.79
+                    inter_pulse = np.logical_and(phase > ip_min, phase < ip_max)
+                    if np.abs(np.mean(BE_temp[off_pulse]) - np.mean(BE_temp[inter_pulse])) < np.std(BE_temp[off_pulse]):
+                        print("An IP exists but limits cannot be set automatically!!")
+            
             # plot the templates and define some useful values
             with plt.style.context(plot_style):
                 plt.clf()
