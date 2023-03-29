@@ -145,7 +145,7 @@ for psr in psr_list:
                     var_dict[BE+'_aligned'], var_dict[BE+'_template'], var_dict[BE+'_mjds_null'],\
                         var_dict[BE+'_tobs'] = do_rem_aln(raw_data, raw_mjds, raw_tobs,
                                                           bad_mjds=bms_dict[DESC], thrsh=1.25, logg=logger)
-                except RuntimeError:
+                except RuntimeError as e:
                     logger.error('Proceeding to next dataset')
                     var_dict[BE+'_aligned'] = None
                     var_dict[BE+'_template'] = None

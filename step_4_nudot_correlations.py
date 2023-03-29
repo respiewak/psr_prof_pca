@@ -91,7 +91,8 @@ be_list = [A.lower() for A in BE_list]
 for psr in psr_list:
     nudot_file = os.path.join(data_dir, psr+"_nudot_gp.txt") # contains columns of MJD, nudot, uncertainty
     if not os.path.exists(nudot_file):
-        raise(RuntimeError("File containing nu-dot GPs does not exist"))
+        logger.warning("File containing nu-dot GPs does not exist; skipping pulsar")
+        continue
         
     nudot_mjds, nudot_vals = np.loadtxt(nudot_file, unpack=True, usecols=(0, 1))
     if nudot_vals.mean() > 1e7: # fix any very wrong orders of magnitude
@@ -120,15 +121,17 @@ for psr in psr_list:
 
             npz_file = os.path.join(data_dir, '{}_{}_gps_fin.npz'.format(psr, freq)) # contains BE_mjds_pred, BE_res_pred, BE_vars_pred
             if not os.path.exists(npz_file):
-                raise(RuntimeError("File containing eigenvalue GPs does not exist"))
+                logger.warning("File containing eigenvalue GPs does not exist")
+                continue
     
             with np.load(npz_file, allow_pickle=True) as f_npz:
                 for key in f_npz.keys():
                     if BE in key:
                         var_dict[key] = f_npz[key]
             
-            if len(var_dict) == 0:
-                raise(RuntimeError("No data found for that backend"))
+            if BE+"_mjds_pred" not in var_dict.keys():
+                logger.warning("No data found for "+BE)
+                continue
     
             eig_mjds = var_dict[BE+'_mjds_pred'] # these MJDs were previously set using the nu-dot MJDs
             eig_vals = var_dict[BE+'_res_pred']
@@ -199,18 +202,19 @@ for psr in psr_list:
             plt.close('all')
             
         # combine the data from different backends into a single plot
-        if len(be_list) < 2:
-            continue
-            
+        #if len(be_list) < 2 and np.all([BE.upper()+"_gp_corrs" in var_dict.keys() for BE in be_list]):
+        #    logger.info("Only one backend or only one with valid data; skipping ")
+        #    continue
+
         n_comp_sig = 0
         for BE in BE_list:
-            n_comp_sig += len(var_dict[BE+'_gp_corrs'][var_dict[BE+'_corr_lim']])
+            n_comp_sig += len(var_dict[BE+'_gp_corrs'][var_dict[BE+'_corr_lim']]) if BE+"_gp_corrs" in var_dict.keys() else 0
             
         if n_comp_sig == 0:
             continue
             
         cmap2 = cmr.gem_r if use_bk_bgd else cmr.neon
-        be_list = ['afb', 'dfb']
+        #be_list = ['afb', 'dfb']
         with plt.style.context(plot_style):
             plt.clf()
             fig, ax1 = plt.subplots() # ax1 will have the nudot values
@@ -230,8 +234,15 @@ for psr in psr_list:
             for be_num, be in enumerate(be_list):
                 icomp_plot = 0
                 BE = be.upper()
+                if not (BE+"_gp_corrs" in var_dict.keys() and BE+"_corr_lim" in var_dict.keys()):
+                    logger.info("No valid data for "+BE)
+                    continue
+                    
                 comp_nums = np.arange(len(var_dict[BE+'_corr_lim']))
                 col_num_be = col_num_be_list[be_num]
+                if len(comp_nums[var_dict[BE+'_corr_lim']]) == 0:
+                    continue
+                    
                 col_eig_inc = 0.8*(0.9/len(be_list))/len(comp_nums[var_dict[BE+'_corr_lim']])
                 for icomp_be, preds, predv in zip(comp_nums, var_dict[BE+'_res_pred'], var_dict[BE+'_vars_pred']):
                     if icomp_be == 1:

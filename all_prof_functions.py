@@ -822,10 +822,8 @@ def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=Tru
     with plt.style.context(style):
         plt.clf()
         if savename or show:
-            fig = plt.figure(num=1)
-            fig.set_size_inches(8, 4)
+            fig = plt.figure(figsize=(6, 8))
             fig.suptitle('{}, {}, eigenvalue distributions'.format(psr, be), fontsize=13)
-            fig.set_size_inches(6, 8)
             
         # define axes parameters
         w = 0.92 # width
@@ -1184,6 +1182,7 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
         a_mjds_new_new = a_mjds_new[lim]
         
         if np.all(a_wo_bl_new == a_wo_bl) or np.all(a_mjds_new_new == a_mjds_new):
+            logg.warning("Mask issues!")
             raise(RuntimeError("Problem lies with applying the mask"))
         else:
             logg.info("{} MJDs were removed from the dataset, leaving {} epochs".format(len(a_mjds_new) - len(a_mjds_new_new), len(a_mjds_new_new)))
@@ -1191,6 +1190,7 @@ def do_rem_aln(data_arr, mjds_arr, tobs_arr, thrsh=1.5, bad_mjds=None, wide=Fals
             a_mjds_new = a_mjds_new_new
             
     if bad_mjds is not None and np.any(np.array([M in bad_mjds for M in a_mjds_new])):
+        logg.warning("Bad MJDs!")
         raise(RuntimeError("Bad MJDs remain in the array"))
                 
     if a_wo_bl.shape[1] < 20:
@@ -1340,8 +1340,7 @@ def find_eq_width_snr(prof, verb=False, plot_style='dark_background'):
             
         with plt.style.context(plot_style):
             plt.clf()
-            fig = plt.figure(num=1)
-            fig.set_size_inches(7, 5.5)
+            fig = plt.figure(figsize=(7, 5.5))
             plt.plot(wid_val, max_val/np.sqrt(wid_val))
             print("The number of trials was", len(wid_val))
             xlims = plt.xlim()
@@ -1563,8 +1562,7 @@ def make_fake_obss(avg_shape=3, nobs=1000, nbin=512, low_noise=True, shape_chang
                 
             with plt.style.context(plot_style):
                 plt.clf()
-                fig = plt.figure(num=0)
-                fig.set_size_inches(7, 5.5)
+                fig = plt.figure(figsize=(7, 5.5))
                 fig.suptitle('Eigenvectors')
                 for icomp_eig in range(len(eigs)):
                     plt.plot(eigs[icomp_eig])
@@ -2503,8 +2501,7 @@ def plot_eig_gp(mjds_pred, pred_res, pred_var, mjd_offset=None,
     
     with plt.style.context(style):
         plt.clf()
-        fig = plt.figure(num=1)
-        fig.set_size_inches(6, 4)
+        fig = plt.figure(figsize=(6, 4))
         title_text = "GP results for {} eigenvalues{}"
         if nudot_vals is not None:
             adj = "correlated"
@@ -2649,8 +2646,7 @@ def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_re
             
     with plt.style.context(style):
         plt.clf()
-        fig = plt.figure(num=1)
-        fig.set_size_inches(5, 9)
+        fig = plt.figure(figsize=(5, 9))
         if sub_mean:
             subbed = " (minus the mean)"
         else:
