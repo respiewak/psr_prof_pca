@@ -16,13 +16,8 @@ from all_prof_functions import (do_rem_aln, aligndata, smart_align, removebaseli
                                 get_rms_bline, _gauss_2, find_bright, findbrightestprofile,
                                 read_pdv, plot_joydivision, setup_log, read_bad_mjd_file)
 
-#try:
-#    from all_prof_functions import check_null_prob
-#except OSError:
-#    print("Cannot load nulling module; skipping that part of the analysis")
 
 plt.rcParams["figure.figsize"] = (6, 10)
-
 
 pars = ap.ArgumentParser(description='The first step in analysing pulsar profile variation: '\
                          'cleaning and aligning the profiles provided in pdv files.')
