@@ -2700,7 +2700,7 @@ def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_re
             
             
 def plot_colors_corrs(var_dict, nudot_mjds, nudot_vals, nudot_errs=None, bk_bgd=False,
-                      savename=None, show=False, logg=None):
+                      savename=None, show=False, logg=None, psr=None, freq=None):
     """
     Make a colorful plot of nu-dot values and significantly correlated eigenvalues combined
     
@@ -2732,6 +2732,14 @@ def plot_colors_corrs(var_dict, nudot_mjds, nudot_vals, nudot_errs=None, bk_bgd=
         plt.clf()
         fig, ax1 = plt.subplots() # ax1 will have the nudot values
         fig.set_size_inches(14, 6)
+        title_text = "Combined correlated eigenvalues and $\dot\\nu$"
+        if psr is not None:
+            title_text += " for "+psr
+            
+        if freq is not None:
+            title_text += " at {} MHz".format(freq)
+            
+        plt.title(title_text)
         ax2 = ax1.twinx() # ax2 will have the eigenvalues
     
         ax1.plot(nudot_mjds, nudot_vals, color=c1)
@@ -2749,7 +2757,7 @@ def plot_colors_corrs(var_dict, nudot_mjds, nudot_vals, nudot_errs=None, bk_bgd=
             
         #print(n_comp_sig)
         icomp_all = 0
-        col_num_tot_list = np.array([0.025+A*0.95/(n_comp_sig-1) for A in range(n_comp_sig)])
+        col_num_tot_list = np.array([0.025+A*0.92/max(n_comp_sig-1, 1) for A in range(n_comp_sig)])
         plotted_range = []
         icomp_plot = 0
         for be_num, be in enumerate(be_list):
@@ -2793,10 +2801,10 @@ def plot_colors_corrs(var_dict, nudot_mjds, nudot_vals, nudot_errs=None, bk_bgd=
                             stretch *= 2
                             range_eig = np.max(stretch*preds) - np.min(stretch*preds)
 
-                    flip = " $\\times {}$".format(stretch*sign) if stretch*sign != 1 else ""
+                    mod = " $\\times {}$".format(stretch*sign) if stretch*sign != 1 else ""
 
                     ax2.plot(var_dict[BE+'_mjds_pred'], stretch*sign*preds, color=col_comp, alpha=col_alpha,
-                             label='{}{} {} comp.{}; $\\rho_{{SRCC}}={:.2f}$'.format(icomp_be, suff, BE, flip, var_dict[BE+'_gp_corrs'][icomp_be]))
+                             label='{}{} {} comp.{}; $\\rho_{{SRCC}}={:.2f}$'.format(icomp_be, suff, BE, mod, var_dict[BE+'_gp_corrs'][icomp_be]))
                     ax2.fill_between(var_dict[BE+'_mjds_pred'], stretch*sign*(preds - np.sqrt(predv)), stretch*sign*(preds + np.sqrt(predv)),
                                      color=col_comp, alpha=k_alpha/(1+icomp_plot/2))
 
@@ -2804,13 +2812,17 @@ def plot_colors_corrs(var_dict, nudot_mjds, nudot_vals, nudot_errs=None, bk_bgd=
                     icomp_plot += 1
 
         ax2.set_ylabel('Eigenvalue')
+        min_mjd = min(np.min(nudot_mjds), min([np.min(var_dict[BE.upper()+'_mjds_pred']) for BE in be_list]))
+        max_mjd = max(np.max(nudot_mjds), max([np.max(var_dict[BE.upper()+'_mjds_pred']) for BE in be_list]))
+        ax1.set_xlim(min_mjd-10, max_mjd+10)
         ylims1 = ax1.get_ylim()
         yrange1 = ylims1[1] - ylims1[0]
         ylims2 = ax2.get_ylim()
         yrange2 = ylims2[1] - ylims2[0]
-        ax1.set_ylim(ylims1[1] - 1.1*yrange1, ylims1[1])
-        ax2.set_ylim(ylims2[1] - 1.1*yrange2, ylims2[1])
-        plt.legend(loc=4, fontsize=9)
+        adj = 1.0 + 0.035*icomp_plot
+        ax1.set_ylim(ylims1[0], ylims1[0] + adj*yrange1)
+        ax2.set_ylim(ylims2[0], ylims2[0] + adj*yrange2)
+        plt.legend(loc=2, fontsize=9)
         fig.tight_layout()
         if savename is not None:
             plt.savefig(savename)

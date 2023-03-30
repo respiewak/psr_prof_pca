@@ -210,7 +210,7 @@ for psr in psr_list:
         if n_comp_sig == 0:
             continue
             
-        plot_colors_corrs(var_dict, nudot_mjds, nudot_vals, nudot_errs, bk_bgd=use_bk_bgd,
+        plot_colors_corrs(var_dict, nudot_mjds, nudot_vals, nudot_errs, bk_bgd=use_bk_bgd, psr=psr, freq=freq,
                          savename=os.path.join(plots_dir, psr+'_{}_combined_corr.png'.format(freq)), show=False, logg=logger)
         logger.info("Plot of the correlated eigenvalue series for all backends saved to "+os.path.join(plots_dir, psr+'_{}_combined_corr.png'.format(freq)))
         plt.close('all')

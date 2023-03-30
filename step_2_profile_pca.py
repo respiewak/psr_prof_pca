@@ -144,12 +144,13 @@ for psr in psr_list:
                 if np.any(sorted(BE_mjds_new) != BE_mjds_new):
                     logger.warning("Sorting failed!!!!")
         
-            # Mike's alignment function
+            # Mike's alignment function # Been moved to the cleaning and aligning function in step_1
             #plt.plot(BE_aligned[:,100])   
-            BE_aligned = psrcelery.data.align_and_scale(BE_aligned.T, BE_template, nharm='auto').T
+            #BE_aligned = psrcelery.data.align_and_scale(BE_aligned.T, BE_template, nharm='auto').T
             #plt.plot(BE_aligned[:,100])   
             #plt.show()
 
+            BE_orig = np.copy(BE_aligned)
             BE_offpulse, _ = _find_off_pulse(BE_template)
             BE_offrms = np.std(BE_aligned[BE_offpulse,:], axis=0)
             BE_aligned = (BE_aligned.T - BE_template).T/BE_offrms
@@ -261,8 +262,8 @@ for psr in psr_list:
             #lim = BE_mjds_new == bad_mjd
             #print(bad_mjd)
             #with plt.style.context(plot_style):
-            #    plt.plot(BE_bins, BE_aligned[:,imjd], color=c2)
-            #    plt.plot(BE_bins[BE_mask], BE_pca.mean_, '-', color=c1)
+            #    plt.plot(BE_bins, BE_orig[:,imjd], color=c2)
+            #    plt.plot(BE_bins, BE_template, '-', color=c1)
             #    #plt.show()
 
             # define axes parameters for following plots
@@ -304,7 +305,7 @@ for psr in psr_list:
                     plt.xlabel('Phase (turns)', fontsize=12)
     
                 plt.text(0.78, 0.87, '$\sigma_{{{:d}}} = {:.4f}$\n$\sigma_{{{:d}}} = {:.4f}$'.format(first, BE_rms[first], second, BE_rms[second]), transform=ax.transAxes)
-                ax.set_ylabel('Intensity (normalised to peak)', fontsize=12)
+                ax.set_ylabel('Intensity (arbitrary)', fontsize=12)
                 plt.legend(loc=2)
                 plt.savefig(os.path.join(plots_dir, desc+'_exmp_profs.png'), bbox_inches='tight')
                 logger.info('Example profiles plot saved to '+os.path.join(plots_dir, desc+'_exmp_profs.png'))
@@ -373,8 +374,8 @@ for psr in psr_list:
             ##print(bad_mjd)
             #with plt.style.context(plot_style):
             #    plt.clf()
-            #    plt.plot(BE_bins, BE_aligned[:,imjd], color=c2)
-            #    plt.plot(BE_bins[BE_mask], BE_pca.mean_*BE_aligned[:,imjd].max()/BE_pca.mean_.max(), '--', color=c1)
+            #    plt.plot(BE_bins, BE_orig[:,imjd], color=c2)
+            #    plt.plot(BE_bins, BE_template*BE_orig[:,imjd].max()/BE_template.max(), '--', color=c1)
             #    #plt.show()
 
             plt.close('all')
@@ -399,5 +400,5 @@ for psr in psr_list:
                 
             np.savez(out_file, **var_dict, **old_dict)
         elif os.path.exists(out_file):
-            logger.warning("No dataset to save but removing an old npz file:", out_file)
+            logger.warning("No dataset to save but removing an old npz file: "+out_file)
             os.remove(out_file)
