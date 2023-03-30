@@ -11,7 +11,7 @@ import astropy.units as u
 from matplotlib import pyplot as plt
 import argparse as ap
 import cmasher as cmr
-from all_prof_functions import plot_eig_gp, setup_log
+from all_prof_functions import plot_eig_gp, setup_log, plot_colors_corrs
 
 
 # Set up some plotting stuff
@@ -163,6 +163,7 @@ for psr in psr_list:
                 logger.error("The trimmed MJD arrays have different lengths: {} and {}".format(len(eig_mjds[eig_lim]), len(nudot_mjds[nudot_lim])))
                 continue
 
+            eig_sigs = np.array([np.max((eig_vals[num,:] - eig_vals[num,:].mean())/np.sqrt(eig_errs[num,:])) for num in range(eig_vals.shape[0])])
             gp_corrs = np.zeros(eig_vals.shape[0])
             for eignum in range(eig_vals.shape[0]):
                 if eignum == 1:
@@ -180,12 +181,12 @@ for psr in psr_list:
             # output the correlations in a simple format
             out_file = os.path.join(data_dir, desc+'_corrs.txt')
             with open(out_file, 'w') as f:
-                f.write('# Component num. | Correlation value\n')
+                f.write('# Component num. | Correlation value | Significance of Eigenvalue\n')
                 for eignum, corr in enumerate(gp_corrs):
-                    f.write('{}\t\t{}\n'.format(eignum, corr))
+                    f.write('{}\t\t{}\t{}\n'.format(eignum, corr, eig_sigs[eignum]))
 
             corr_lim = np.abs(gp_corrs) > 0.3
-            err_lim = np.array([np.any(eig_vals[num,:] - eig_vals[num,:].mean() > np.sqrt(eig_errs[num,:])) for num in range(eig_vals.shape[0])])
+            err_lim = eig_sigs > 1
             use_lim = np.logical_and(corr_lim, err_lim)
 
             if len(gp_corrs[use_lim]) == 0:
@@ -202,10 +203,6 @@ for psr in psr_list:
             plt.close('all')
             
         # combine the data from different backends into a single plot
-        #if len(be_list) < 2 and np.all([BE.upper()+"_gp_corrs" in var_dict.keys() for BE in be_list]):
-        #    logger.info("Only one backend or only one with valid data; skipping ")
-        #    continue
-
         n_comp_sig = 0
         for BE in BE_list:
             n_comp_sig += len(var_dict[BE+'_gp_corrs'][var_dict[BE+'_corr_lim']]) if BE+"_gp_corrs" in var_dict.keys() else 0
@@ -213,72 +210,8 @@ for psr in psr_list:
         if n_comp_sig == 0:
             continue
             
-        cmap2 = cmr.gem_r if use_bk_bgd else cmr.neon
-        #be_list = ['afb', 'dfb']
-        with plt.style.context(plot_style):
-            plt.clf()
-            fig, ax1 = plt.subplots() # ax1 will have the nudot values
-            fig.set_size_inches(14, 6)
-            ax2 = ax1.twinx() # ax2 will have the eigenvalues
-    
-            ax1.plot(nudot_mjds, nudot_vals, color=c1)
-            if nudot_errs is not None:
-                ax1.fill_between(nudot_mjds, nudot_vals - nudot_errs, nudot_vals + nudot_vars,
-                                 color=c1, alpha=k_alpha, zorder=10)
-        
-            ax1.set_ylabel('$\dot \\nu$ (Hz/s)')
-            ax1.set_xlabel('MJD (day)')
-    
-            icomp_all = 0
-            col_num_be_list = np.array([0.05+A*0.9/len(be_list) for A in range(len(be_list))])
-            for be_num, be in enumerate(be_list):
-                icomp_plot = 0
-                BE = be.upper()
-                if not (BE+"_gp_corrs" in var_dict.keys() and BE+"_corr_lim" in var_dict.keys()):
-                    logger.info("No valid data for "+BE)
-                    continue
-                    
-                comp_nums = np.arange(len(var_dict[BE+'_corr_lim']))
-                col_num_be = col_num_be_list[be_num]
-                if len(comp_nums[var_dict[BE+'_corr_lim']]) == 0:
-                    continue
-                    
-                col_eig_inc = 0.8*(0.9/len(be_list))/len(comp_nums[var_dict[BE+'_corr_lim']])
-                for icomp_be, preds, predv in zip(comp_nums, var_dict[BE+'_res_pred'], var_dict[BE+'_vars_pred']):
-                    if icomp_be == 1:
-                        suff = 'st'
-                    elif icomp_be == 2:
-                        suff = 'nd'
-                    elif icomp_be == 3:
-                        suff = 'rd'
-                    else:
-                        suff = 'th'
-                    
-                    # want to only plot significant correlated eigenvalues
-                    if var_dict[BE+'_corr_lim'][icomp_be]:
-                        # set the colour and alpha for the line
-                        col_comp = cmap2(col_num_be+icomp_plot*col_eig_inc)
-                        col_alpha = 0.9 - 0.1*icomp_plot
-                
-                        ax2.plot(var_dict[BE+'_mjds_pred'], preds, color=col_comp, alpha=col_alpha,
-                                 label='{}{} {} comp.; $\\rho_{{SRCC}}={:.2f}$'.format(icomp_be, suff, BE, var_dict[BE+'_gp_corrs'][icomp_be]))
-                        ax2.fill_between(var_dict[BE+'_mjds_pred'], preds - np.sqrt(predv), preds + np.sqrt(predv),
-                                         color=col_comp, alpha=k_alpha-0.1*icomp_plot)
-                
-                        icomp_plot += 1
-                
-            ax2.set_ylabel('Eigenvalue')
-            ylims1 = ax1.get_ylim()
-            yrange1 = ylims1[1] - ylims1[0]
-            ylims2 = ax2.get_ylim()
-            yrange2 = ylims2[1] - ylims2[0]
-            ax1.set_ylim(ylims1[1] - 1.1*yrange1, ylims1[1])
-            ax2.set_ylim(ylims2[1] - 1.1*yrange2, ylims2[1])
-            plt.legend(loc=4, fontsize=9)
-            fig.tight_layout()
-            plt.savefig(os.path.join(plots_dir, psr+'_{}_combined_corr.png'.format(freq)))
-            #plt.show()
-            
+        plot_colors_corrs(var_dict, nudot_mjds, nudot_vals, nudot_errs, bk_bgd=use_bk_bgd,
+                         savename=os.path.join(plots_dir, psr+'_{}_combined_corr.png'.format(freq)), show=False, logg=logger)
         logger.info("Plot of the correlated eigenvalue series for all backends saved to "+os.path.join(plots_dir, psr+'_{}_combined_corr.png'.format(freq)))
         plt.close('all')
 

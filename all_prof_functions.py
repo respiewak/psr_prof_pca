@@ -947,10 +947,10 @@ def find_dists_outliers(eigvals, mjds, psr, be, ncomp=5, savename=None, show=Tru
                 ax.set_xlim(bins[0]-2*bin_size, bins[-1]+2*bin_size)
                 ax.set_ylim(0, y_uplim)
                 descrpn = "\nRough Limits" if not (proceed2 or proceed3) else ""
-                ax.text(0.72, 0.95, "{0:.1f}-$\sigma$ lo-lim: {1:.2f}; N={3:d}\n{0:.1f}-$\sigma$ up-limit: {2:.2f}; N={4:d}{5:s}"
+                ax.text(0.99, 0.95, "{0:.1f}-$\sigma$ lo-lim: {1:.3f}; N={3:d}\n{0:.1f}-$\sigma$ up-limit: {2:.3f}; N={4:d}{5:s}"
                         .format(sigma, low_lim, up_lim, len(vals[vals < low_lim]), len(vals[vals > up_lim]), descrpn),
-                       fontsize=10, transform=ax.transAxes, verticalalignment='top')
-                ax.text(0.025, 0.95, "$i_{{comp}}$ = {}".format(ncomp-icomp-1), fontsize=10, transform=ax.transAxes, verticalalignment='top')
+                       fontsize=10, transform=ax.transAxes, verticalalignment='top', horizontalalignment='right')
+                ax.text(0.015, 0.95, "$i_{{comp}}$ = {}".format(ncomp-icomp-1), fontsize=10, transform=ax.transAxes, verticalalignment='top')
         
             lim_out = np.logical_or(lim_out, np.logical_or(vals < low_lim, vals > up_lim))
             if first_out: # last array analysed is first component, will be the only outliers returned
@@ -2695,6 +2695,126 @@ def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_re
         if savename is not None:
             plt.savefig(savename, bbox_inches='tight')
         
+        if show:
+            plt.show()
+            
+            
+def plot_colors_corrs(var_dict, nudot_mjds, nudot_vals, nudot_errs=None, bk_bgd=False,
+                      savename=None, show=False, logg=None):
+    """
+    Make a colorful plot of nu-dot values and significantly correlated eigenvalues combined
+    
+    Input:
+        var_dict : dictionary
+        nudot_mjds : numpy array of floats
+        nudot_vals : numpy array of floats
+        nudot_errs : numpy array of floats or NoneType
+        bk_bgd : boolean
+        savename : string or NoneType
+        show : boolean
+        logg : logging object or NoneType
+    
+    """
+    
+    k_alpha = 0.4
+    if bk_bgd:
+        plot_style = 'dark_background'
+        cmap2 = cmr.gem_r
+        c1 = 'w'
+    else:
+        plot_style = 'default'
+        cmap2 = cmr.neon
+        c1 = 'k'
+        
+    be_list = np.unique([key.split('_')[0] for key in var_dict.keys()])
+    #print(be_list)
+    with plt.style.context(plot_style):
+        plt.clf()
+        fig, ax1 = plt.subplots() # ax1 will have the nudot values
+        fig.set_size_inches(14, 6)
+        ax2 = ax1.twinx() # ax2 will have the eigenvalues
+    
+        ax1.plot(nudot_mjds, nudot_vals, color=c1)
+        if nudot_errs is not None:
+            ax1.fill_between(nudot_mjds, nudot_vals - nudot_errs, nudot_vals + nudot_vars,
+                             color=c1, alpha=k_alpha, zorder=10)
+        
+        ax1.set_ylabel('$\dot \\nu$ (Hz/s)')
+        ax1.set_xlabel('MJD (day)')
+
+        n_comp_sig = 0
+        for be in be_list:
+            BE = be.upper()
+            n_comp_sig += len(var_dict[BE+'_gp_corrs'][var_dict[BE+'_corr_lim']]) if BE+"_gp_corrs" in var_dict.keys() else 0
+            
+        #print(n_comp_sig)
+        icomp_all = 0
+        col_num_tot_list = np.array([0.025+A*0.95/(n_comp_sig-1) for A in range(n_comp_sig)])
+        plotted_range = []
+        icomp_plot = 0
+        for be_num, be in enumerate(be_list):
+            BE = be.upper()
+            if not (BE+"_gp_corrs" in var_dict.keys() and BE+"_corr_lim" in var_dict.keys()):
+                if logg is not None:
+                    logg.info("No valid data for "+BE)
+                else:
+                    print("No valid data for "+BE)
+                    
+                continue
+                    
+            comp_nums = np.arange(len(var_dict[BE+'_corr_lim']))
+            #col_num_be = col_num_be_list[be_num]
+            if len(comp_nums[var_dict[BE+'_corr_lim']]) == 0:
+                continue
+                    
+            #col_eig_inc = 0.9*(0.95/len(be_list))/len(comp_nums[var_dict[BE+'_corr_lim']])
+            for icomp_be, preds, predv in zip(comp_nums, var_dict[BE+'_res_pred'], var_dict[BE+'_vars_pred']):
+                if icomp_be == 1:
+                    suff = 'st'
+                elif icomp_be == 2:
+                    suff = 'nd'
+                elif icomp_be == 3:
+                    suff = 'rd'
+                else:
+                    suff = 'th'
+
+                # want to only plot significant correlated eigenvalues
+                if var_dict[BE+'_corr_lim'][icomp_be]:
+                    stretch = 1
+                    # set the colour and alpha for the line
+                    col_comp = cmap2(col_num_tot_list[icomp_plot])
+                    col_alpha = 1 - 0.09*icomp_plot
+
+                    # flip and stretch eigenvalue timeseries for improved clarity
+                    sign = -1 if var_dict[BE+"_gp_corrs"][icomp_be] < 0 else 1
+                    if len(plotted_range) > 0:
+                        range_eig = np.max(preds) - np.min(preds)
+                        while range_eig < 0.5*plotted_range[0]:
+                            stretch *= 2
+                            range_eig = np.max(stretch*preds) - np.min(stretch*preds)
+
+                    flip = " $\\times {}$".format(stretch*sign) if stretch*sign != 1 else ""
+
+                    ax2.plot(var_dict[BE+'_mjds_pred'], stretch*sign*preds, color=col_comp, alpha=col_alpha,
+                             label='{}{} {} comp.{}; $\\rho_{{SRCC}}={:.2f}$'.format(icomp_be, suff, BE, flip, var_dict[BE+'_gp_corrs'][icomp_be]))
+                    ax2.fill_between(var_dict[BE+'_mjds_pred'], stretch*sign*(preds - np.sqrt(predv)), stretch*sign*(preds + np.sqrt(predv)),
+                                     color=col_comp, alpha=k_alpha/(1+icomp_plot/2))
+
+                    plotted_range.append(np.max(stretch*preds) - np.min(stretch*preds))
+                    icomp_plot += 1
+
+        ax2.set_ylabel('Eigenvalue')
+        ylims1 = ax1.get_ylim()
+        yrange1 = ylims1[1] - ylims1[0]
+        ylims2 = ax2.get_ylim()
+        yrange2 = ylims2[1] - ylims2[0]
+        ax1.set_ylim(ylims1[1] - 1.1*yrange1, ylims1[1])
+        ax2.set_ylim(ylims2[1] - 1.1*yrange2, ylims2[1])
+        plt.legend(loc=4, fontsize=9)
+        fig.tight_layout()
+        if savename is not None:
+            plt.savefig(savename)
+
         if show:
             plt.show()
 
