@@ -1,6 +1,12 @@
 # Using PCA and GPs to analyse pulsar profile variation
 * * *
 
+Authors: Renee Spiewak, Mike Keith, ...
+
+
+The methods and JBO data in this package are described in Keith, Spiewak, et al. (in prep.), and are released here for use by others with appropriate citation. 
+
+
 ## Dependencies
 * * *
 
@@ -139,7 +145,7 @@ Run
 
 and follow the steps outlined. As with the previous steps, most plots are also saved to the `<data_dir>/plots` directory. 
 
-The output of this notebook is a `.npz` file containing an array of MJDs with roughly 1 day cadence spanning the input observation range, and the associated predicted values (and variances) from the GPs for each selected eigenvector. An array of MJDs, e.g., those used for nudot GPs, can be given to the main function of this notebook, or one will be generated. 
+The output of this notebook is a `.npz` file containing an array of roughly uniformly-spaced MJDs spanning the input observation range, and the associated predicted values (and variances) from the GPs for each selected eigenvector. An array of MJDs, e.g., those used for nudot GPs, can be given to the main function of this notebook, or one will be generated. 
 
 
 ### Testing for correlations between eigenvalues and nudot values
@@ -151,10 +157,6 @@ This is still work in progress, but there exists a notebook with some rough step
 > `jupyter [lab|notebook] step_4_nudot_correlations.ipynb`
 
 and follow the steps. The correlation values will be printed and saved to a text file, and a plot is made of the nudot values and eigenvalues for which the correlation coefficient is significant (`|rho| > 0.3`). 
-
-
-#### Checking for periodicity
-* * *
 
 Lastly, we use the `astropy.timeseries.LombScargle` function to test for periodicity in the nudot values. This is the last part of the `step_4_nudot_correlations.ipynb` notebook and produces a plot of the resulting periodogram. The frequency of the maximum point in the periodogram is printed (and converted to a period in days). 
 

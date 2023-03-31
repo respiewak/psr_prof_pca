@@ -14,7 +14,7 @@ import cmasher as cmr
 sys.path.append('/home/s86932rs/research/psrcelery/')
 import psrcelery
 from all_prof_functions import (bin_array, get_rms_bline,# check_null_prob, 
-                                calc_snr, _find_off_pulse,
+                                calc_snr, _find_off_pulse, plot_eigvecs,
                                 err_eigval, err_eigval_off, find_dists_outliers, rolling_out_rej,
                                 bad_mjds_eigs, setup_log)
 
@@ -197,14 +197,18 @@ for psr in psr_list:
                 ip_midd = np.mean(phase[np.logical_and(BE_offpulse, phase > 0.65)])
                 ip_min = np.max(phase[BE_offpulse][phase[BE_offpulse] < ip_midd])-2*one_bin
                 ip_max = np.min(phase[BE_offpulse][phase[BE_offpulse] > ip_midd])+2*one_bin
-                off_pulse = np.logical_and(phase > peak_max, phase < off_max)
+                off_pulse = np.logical_and(phase > off_max, phase < ip_min)
                 inter_pulse = np.logical_and(phase > ip_min, phase < ip_max)
-                if np.abs(np.mean(BE_template[off_pulse]) - np.mean(BE_template[inter_pulse])) < np.std(BE_template[off_pulse]):
+                if len(BE_template[inter_pulse]) < 5 or np.abs(np.mean(BE_template[off_pulse]) - np.mean(BE_template[inter_pulse])) < np.std(BE_template[off_pulse]):
+                    logger.info("Changing IP limits to assume centre at 0.75 and recalculating")
                     ip_midd = 0.75
-                    ip_min = 0.71
-                    ip_max = 0.79
+                    ip_min = 0.72
+                    ip_max = 0.78
                     inter_pulse = np.logical_and(phase > ip_min, phase < ip_max)
-                    if np.abs(np.mean(BE_template[off_pulse]) - np.mean(BE_template[inter_pulse])) < np.std(BE_template[off_pulse]):
+                    ip_edges = np.mean(np.append(BE_template[inter_pulse][:2], BE_template[inter_pulse][-2:]))
+                    ip_centre = np.mean(BE_template[inter_pulse][2:-2])
+                    if ip_centre - ip_edges < 1.5*np.std(BE_template[off_pulse]) \
+                       and np.abs(np.mean(BE_template[off_pulse]) - np.mean(BE_template[inter_pulse])) < np.std(BE_template[off_pulse]):
                         logger.info("An IP exists but limits cannot be set automatically!!")
                         ip_exist = False
             
@@ -311,24 +315,10 @@ for psr in psr_list:
                 logger.info('Example profiles plot saved to '+os.path.join(plots_dir, desc+'_exmp_profs.png'))
                 #plt.show()
 
-            # plot the first five principal components
-            with plt.style.context(plot_style):
-                plt.clf()
-                plt.title("{}, {}, mean and first 6 eigenvectors".format(psr, BE))
-                plt.plot(0.5*(BE_pca.mean_/BE_pca.mean_.max())+0.4, color='grey', ls='--')
-                plt.plot(BE_pca.components_[0,:], color=c1)
-                plt.plot(BE_pca.components_[1,:]-0.4, color=c2)
-                plt.plot(BE_pca.components_[2,:]-0.8, color=c3)
-                plt.plot(BE_pca.components_[3,:]-1.2, color=c4)
-                plt.plot(BE_pca.components_[4,:]-1.6, color=c5)
-                plt.plot(BE_pca.components_[5,:]-2, color=c6)
-                plt.ylabel("Relative Intensity", fontsize=12)
-                plt.xlabel("Phase (bins)", fontsize=12)
-
-                plt.tight_layout()
-                plt.savefig(os.path.join(plots_dir, '{}_components.png'.format(desc)), bbox_inches='tight')
-                logger.info('Plot of eigenvectors saved to '+os.path.join(plots_dir, '{}_components.png'.format(desc)))
-                #plt.show()
+            # plot the first few principal components
+            plot_eigvecs(BE_pca, ip_exist=ip_exist, nbin=nbin, BE_mask=BE_mask, psr=psr, freq=freq, BE=BE,
+                         bk_bgd=use_bk_bgd, savename=os.path.join(plots_dir, desc+"_components.png"), show=False, logg=logger, return_ax=False,
+                         use_comps=None)
 
             # explained ratio, the variance of each component, and can compute a cumulative sum
             with plt.style.context(plot_style):
@@ -386,6 +376,9 @@ for psr in psr_list:
             var_dict[BE+'_vectors'] = BE_pca.components_
             var_dict[BE+'_mjds'] = BE_mjds_new
             var_dict[BE+'_rms'] = BE_rms
+            var_dict[BE+"_pca"] = BE_pca
+            var_dict[BE+"_ipbool"] = ip_exist
+            var_dict[BE+"_pca_mask"] = BE_mask
 
         out_file = os.path.join(data_dir, '{}_{}_eigs.npz'.format(psr, freq))
         if np.any(np.array(be_exists)):

@@ -1736,6 +1736,89 @@ def add_gauss(prof, centre, width, height=1):
     return(prof+new_comp)
 
 
+def plot_eigvecs(BE_pca, ip_exist=False, nbin=512, BE_mask=None, psr="", freq=0, BE='',
+                 bk_bgd=False, savename=None, show=False, logg=None, return_ax=False,
+                 use_comps=None):
+    """
+    Plot the first few eigenvectors of a PCA and the mean profile
+    
+    """
+    
+    if bk_bgd:
+        plot_style = 'dark_background'
+        # The CMasher package provides lots of lovely colour maps; chroma is a handy sequential cmap
+        cmap = cmr.chroma_r
+        c1 = cmap(0.0)
+        c2 = cmap(0.1)
+        c3 = cmap(0.33)
+        c4 = cmap(0.55)
+        c5 = cmap(0.68)
+        c6 = cmap(0.815)
+    else:
+        plot_style = 'default'
+        cmap = cmr.chroma
+        c1 = cmap(0.0)
+        c2 = cmap(0.3)
+        c3 = cmap(0.53)
+        c4 = cmap(0.65)
+        c5 = cmap(0.78)
+        c6 = cmap(0.915)
+        
+    col_list = np.array([c1, c2, c3, c4, c5, c6])
+        
+    BE_bins = np.linspace(0, 1, num=nbin, endpoint=False)
+    if ip_exist and BE_mask is None:
+        if logg is not None:
+            logg.warning("IP exists but no mask was given; proceeding without plotting indicator line")
+        else:
+            print("IP exists but no mask was given; proceeding without plotting indicator line")
+            
+        ip_exist = False
+        
+    if use_comps is None:
+        use_comps = np.arange(6)
+        mod = "first 6"
+    else:
+        col_list = col_list[:len(use_comps)]
+        mod = "("
+        for n, icomp in enumerate(use_comps):
+            mod += "{}".format(icomp)
+            if n != len(use_comps)-1:
+                mod += ", "
+            
+        mod += ")-th"
+        
+    with plt.style.context(plot_style):
+        plt.clf()
+        fig = plt.figure(figsize=(7, 5))
+        ax = fig.gca()
+        plt.title("{}, {}, {}, mean and {} eigenvectors".format(psr, freq, BE, mod))
+        ax.plot(0.5*(BE_pca.mean_/BE_pca.mean_.max())+0.5, color='grey', ls='--')
+        for icomp, iline, icol in zip(use_comps, range(len(use_comps)), col_list):
+            ax.plot(BE_pca.components_[icomp,:] - 0.5*iline, color=icol)
+
+        if ip_exist:
+            mask1 = np.logical_and(BE_mask, BE_bins < 0.65)
+            ip_line = len(BE_bins[mask1])
+            ylims = plt.ylim()
+            ax.vlines(ip_line, ylims[0], ylims[1], color='grey', ls=':')
+            ax.set_ylim(ylims)
+            
+            ax.text(ip_line+1, ylims[1]*0.97, "IP", verticalalignment='top')
+        
+        ax.set_ylabel("Relative Intensity", fontsize=12)
+        ax.set_xlabel("Phase (bins)", fontsize=12)
+
+        if savename is not None:
+            plt.savefig(savename, bbox_inches='tight')
+
+        if show:
+            plt.show()
+
+        if return_ax:
+            return(ax)
+
+
 # function to bin the eigenvalues by averaging over given lengths of time, with some overlap
 def bin_array(data, mjd_array, err_array, block=100, overlap=0.5):
     """
@@ -2608,7 +2691,7 @@ def plot_eig_gp(mjds_pred, pred_res, pred_var, mjd_offset=None,
 
 
 def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_real=None, sub_mean=True,
-                     bk_bgd=False, savename=None, show=True):
+                     bk_bgd=False, savename=None, show=True, ip_exist=False, ip_line=None):
     """
     A function to reconstruct profiles from eigenvectors and predicted eigenvalues and make a waterfall-type plot
 
@@ -2628,6 +2711,8 @@ def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_re
         savename - str or NoneType, name of the file to save the plot
             Use `None` to not save the plot to disk (just show the plot)
         show - bool, whether to show the plot instead of just saving it
+        ip_exist - bool, whether an interpulse is in the data
+        ip_line - int or NoneType, the location to place a vertical line if not None
     
     """
     
@@ -2687,6 +2772,9 @@ def plot_recon_profs(mean_prof, eigvecs, mjds_pred, pred_reses, psrname, mjds_re
         fig.colorbar(p, extend=extend, fraction=0.05)
         plt.ylabel('MJD (day)', fontsize=11)
         plt.xlabel('Phase bin', fontsize=11)
+        
+        if ip_exist and ip_line is not None:
+            plt.vlines(ip_line, ymin=ymin, ymax=ymax, linestyle='dashed', colors='grey', linewidth=0.75)
         
         if mjds_real is not None:
             plt.hlines(mjds_real, xmin=5*nbin/250, xmax=25*nbin/250, linestyle='solid', colors='grey',

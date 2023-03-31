@@ -36,6 +36,8 @@ pars.add_argument('-cb', '--burn_chain', default=300, type=int,
                   help="Number of steps for burn-in for MCMC")
 pars.add_argument('-cp', '--prod_chain', default=3000, type=int,
                   help="Number of steps for production chain for MCMC")
+pars.add_argument('-r', '--read_old', action=store_true,
+                  help="Read the previously")
 args = vars(pars.parse_args())
 
 use_bk_bgd = args['use_bk_bgd']
@@ -73,6 +75,7 @@ if not os.path.exists(plots_dir):
     os.chdir(data_dir)
     os.mkdir('plots')
 
+read_old = args['read_old']
 #psr = 'B1828-11'
 psr_list = args['psr_list']
 if type(psr_list) is str:
@@ -168,7 +171,6 @@ for psr in psr_list:
                 logger.info("The MJDs for the GP prediction span from {:.5f} to {:.5f} with an average separation of {:.3f}"
                             .format(min(nudot_mjds), max(nudot_mjds), avg_sep))
 
-            read_old = False # make this not hard-coded
             gp_file = os.path.join(data_dir, '{}_{}_gps_fin.npz'.format(psr, freq))
             if read_old and os.path.exists(gp_file):
                 with np.load(gp_file, allow_pickle=True) as d:
